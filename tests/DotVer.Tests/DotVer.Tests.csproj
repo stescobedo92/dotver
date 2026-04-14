@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Spectre.Console.Testing" Version="0.49.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DotVer.Cli\DotVer.Cli.csproj" />
+    <ProjectReference Include="..\..\src\DotVer.Infrastructure\DotVer.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\DotVer.Application\DotVer.Application.csproj" />
+    <ProjectReference Include="..\..\src\DotVer.Domain\DotVer.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

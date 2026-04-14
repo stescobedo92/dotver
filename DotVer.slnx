@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DotVer.Application/DotVer.Application.csproj" />
+    <Project Path="src/DotVer.Cli/DotVer.Cli.csproj" />
+    <Project Path="src/DotVer.Domain/DotVer.Domain.csproj" />
+    <Project Path="src/DotVer.Infrastructure/DotVer.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DotVer.Tests/DotVer.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,12 @@
+bin/
+obj/
+.vs/
+.idea/
+.vscode/
+artifacts/
+*.user
+*.suo
+*.nupkg
+*.snupkg
+packaging/npm/vendor/
+packaging/npm/.tmp/

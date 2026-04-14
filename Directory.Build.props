@@ -1,0 +1,19 @@
+<Project>
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>preview</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <RepositoryUrl>https://github.com/OWNER/REPO</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/OWNER/REPO</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Authors>stesc</Authors>
+    <Company>DotVer</Company>
+    <Product>DotVer</Product>
+    <PackageTags>dotnet;sdk;version-manager;cli;tui</PackageTags>
+  </PropertyGroup>
+</Project>

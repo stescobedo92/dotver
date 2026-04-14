@@ -1,0 +1,25 @@
+{
+  "name": "dotver",
+  "version": "0.0.0-dev",
+  "description": "Cross-platform .NET SDK version manager with dotnet shims",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OWNER/REPO.git"
+  },
+  "bin": {
+    "dotver": "./bin/dotver.js",
+    "dotnet": "./bin/dotnet.js"
+  },
+  "files": [
+    "bin",
+    "scripts",
+    "vendor"
+  ],
+  "scripts": {
+    "postinstall": "node ./scripts/install.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
