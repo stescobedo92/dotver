@@ -2,39 +2,6 @@ using System.Text.RegularExpressions;
 
 namespace DotVer.Domain;
 
-public enum SdkOriginKind
-{
-    ManagedInstall,
-    OfficialInstallRoot,
-    CustomPath,
-    RegisteredRoot,
-    PathProbe,
-    Unknown
-}
-
-public enum ShellKind
-{
-    PowerShell,
-    Bash,
-    Zsh,
-    Fish,
-    Cmd
-}
-
-public enum SdkRollForward
-{
-    Default,
-    Disable,
-    Patch,
-    Feature,
-    Minor,
-    Major,
-    LatestPatch,
-    LatestFeature,
-    LatestMinor,
-    LatestMajor
-}
-
 public sealed record SdkVersion(string Raw, int Major, int Minor, int FeatureBand, int Patch, string? Suffix = null) : IComparable<SdkVersion>
 {
     private static readonly Regex Pattern = new(
@@ -128,57 +95,3 @@ public sealed record SdkVersion(string Raw, int Major, int Minor, int FeatureBan
             ? version!
             : throw new ArgumentException($"'{value}' is not a valid .NET SDK version.", nameof(value));
 }
-
-public sealed record SdkInstallation(
-    SdkVersion Version,
-    string HostRoot,
-    string SdkRoot,
-    string DotnetPath,
-    SdkOriginKind Origin,
-    string OriginHint,
-    bool IsManaged,
-    bool CanBeUsedDirectly,
-    string DiscoverySource);
-
-public sealed record GlobalJsonRequest(SdkVersion Version, SdkRollForward RollForward);
-
-public sealed record SdkSelection(SdkInstallation? Installation, string Reason, bool FromGlobalJson);
-
-public sealed record DotVerConfig(
-    string? CurrentVersion,
-    string? DefaultVersion,
-    Dictionary<string, string> Aliases,
-    List<string> RegisteredRoots)
-{
-    public static DotVerConfig Empty { get; } = new(null, null, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), []);
-}
-
-public sealed record ProcessSpec(
-    string FileName,
-    IReadOnlyList<string> Arguments,
-    string? WorkingDirectory = null,
-    IReadOnlyDictionary<string, string?>? EnvironmentVariables = null);
-
-public sealed record ProcessResult(int ExitCode, string StandardOutput, string StandardError);
-
-public sealed record ShimInstallResult(string ShimsDirectory, IReadOnlyList<string> FilesWritten);
-
-public sealed record ReleaseChannel(string Channel, string LatestSdkVersion, string SupportPhase, string ReleaseType);
-
-public sealed record EnvironmentBootstrapResult(
-    string ShimsDirectory,
-    bool PersistentPathUpdated,
-    bool ProcessPathUpdated,
-    IReadOnlyList<string> ProfilesUpdated,
-    IReadOnlyList<string> Notes);
-
-public sealed record InstallPlan(string RequestedToken, string ResolvedVersion, string Reason, ReleaseChannel? Channel);
-
-public sealed record InstallOutcome(InstallPlan Plan, SdkInstallation Installation, bool WasAlreadyInstalled);
-
-public sealed record UninstallOutcome(
-    string RemovedVersion,
-    bool RemovedDirectory,
-    string? NewCurrentVersion,
-    string? NewDefaultVersion,
-    IReadOnlyList<string> RemovedAliases);
