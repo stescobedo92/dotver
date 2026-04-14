@@ -4,7 +4,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Repository,
     [Parameter(Mandatory = $true)]
-    [string]$PackageIdentifier
+    [string]$PackageIdentifier,
+    [Parameter(Mandatory = $false)]
+    [string]$InstallerSha256 = ""
 )
 
 $manifestRoot = Join-Path $PSScriptRoot "..\..\artifacts\winget\$Version"
@@ -32,13 +34,15 @@ ManifestType: defaultLocale
 ManifestVersion: 1.9.0
 "@ | Set-Content (Join-Path $manifestRoot "$PackageIdentifier.locale.en-US.yaml")
 
+$sha256Line = if ($InstallerSha256) { "`n    InstallerSha256: $InstallerSha256" } else { "" }
+
 @"
 PackageIdentifier: $PackageIdentifier
 PackageVersion: $Version
 Installers:
   - Architecture: x64
     InstallerType: portable
-    InstallerUrl: $installerUrl
+    InstallerUrl: $installerUrl$sha256Line
     Commands:
       - dotver
 InstallerSuccessCodes:
