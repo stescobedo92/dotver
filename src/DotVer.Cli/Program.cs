@@ -11,13 +11,13 @@ var services = new ServiceCollection()
     .AddDotVer();
 
 using var bootstrapProvider = services.BuildServiceProvider();
-var bootstrap = bootstrapProvider.GetRequiredService<EnvironmentBootstrapService>();
+var bootstrap = bootstrapProvider.GetRequiredService<IEnvironmentBootstrapService>();
 var registrar = new TypeRegistrar(services);
 
 if (args.Length > 0 && string.Equals(args[0], "intercept", StringComparison.OrdinalIgnoreCase))
 {
     await bootstrap.EnsureConfiguredAsync(CancellationToken.None);
-    var interceptor = bootstrapProvider.GetRequiredService<InterceptorService>();
+    var interceptor = bootstrapProvider.GetRequiredService<IInterceptorService>();
     var interceptedArgs = args.Skip(1).ToArray();
     if (interceptedArgs.Length > 0 && interceptedArgs[0] == "--")
     {
@@ -53,42 +53,42 @@ app.Configure(config =>
 
     config.AddCommand<DashboardCommand>("dashboard")
         .WithAlias("home")
-        .WithDescription("Abre la experiencia TUI interactiva.");
+        .WithDescription("Opens the interactive TUI experience.");
 
     config.AddCommand<ListCommand>("list")
         .WithAlias("ls")
-        .WithDescription("Lista SDKs detectados.");
+        .WithDescription("Lists detected SDKs.");
 
     config.AddCommand<CurrentCommand>("current")
-        .WithDescription("Muestra la version activa.");
+        .WithDescription("Shows the active version.");
 
     config.AddCommand<UseCommand>("use")
-        .WithDescription("Selecciona la version actual.");
+        .WithDescription("Sets the current version.");
 
     config.AddCommand<DefaultCommand>("default")
-        .WithDescription("Define la version por defecto.");
+        .WithDescription("Sets the default version.");
 
     config.AddCommand<AliasCommand>("alias")
-        .WithDescription("Crea o lista aliases.");
+        .WithDescription("Creates or lists aliases.");
 
     config.AddCommand<UnaliasCommand>("unalias")
-        .WithDescription("Elimina un alias.");
+        .WithDescription("Removes an alias.");
 
     config.AddCommand<InstallCommand>("install")
-        .WithDescription("Instala un SDK aislado usando el script oficial de .NET.");
+        .WithDescription("Installs an isolated SDK using the official .NET install script.");
 
     config.AddCommand<ListRemoteCommand>("list-remote")
         .WithAlias("ls-remote")
-        .WithDescription("Consulta canales remotos oficiales.");
+        .WithDescription("Queries official remote channels.");
 
     config.AddCommand<UninstallCommand>("uninstall")
-        .WithDescription("Desinstala un SDK managed por dotver y repara current/default/aliases.");
+        .WithDescription("Uninstalls a dotver-managed SDK and repairs current/default/aliases.");
 
     config.AddCommand<DoctorCommand>("doctor")
-        .WithDescription("Ejecuta checks de salud y preparacion.");
+        .WithDescription("Runs health and readiness checks.");
 
     config.AddCommand<RegisterRootCommand>("register-root")
-        .WithDescription("Registra una raiz externa adicional para escaneo.");
+        .WithDescription("Registers an additional external root for scanning.");
 });
 
 return await app.RunAsync(args);
