@@ -30,6 +30,111 @@ dotver doctor
 dotver register-root /custom/dotnet
 ```
 
+## Examples
+
+### Install the latest LTS and switch to it
+
+```bash
+$ dotver install lts
+✔ Resolving version or channel
+✔ Installing 8.0.412
+✔ Applying automatic current/default
+✔ Configuring shims, PATH and profiles
+
+┌──────────────────┬────────────────────────────────────────────┐
+│ Step             │ Value                                      │
+├──────────────────┼────────────────────────────────────────────┤
+│ Requested        │ lts                                        │
+│ Resolved         │ 8.0.412                                    │
+│ Reason           │ Channel 8.0 resolved to 8.0.412.           │
+│ Status           │ Installed                                  │
+│ Current          │ 8.0.412                                    │
+│ Default          │ 8.0.412                                    │
+│ Managed root     │ ~/.dotver/installs/8.0.412                 │
+│ Shims            │ ~/.dotver/shims                            │
+│ Persistent PATH  │ updated                                    │
+│ Process PATH     │ updated                                    │
+└──────────────────┴────────────────────────────────────────────┘
+```
+
+### List all detected SDKs
+
+```bash
+$ dotver list
+╭──────────┬─────────┬─────────┬─────────┬────────┬──────────────────┬─────────────────────────────────╮
+│ Version  │ Current │ Default │ Managed │ Direct │ Origin           │ SdkRoot                         │
+├──────────┼─────────┼─────────┼─────────┼────────┼──────────────────┼─────────────────────────────────┤
+│ 10.0.201 │ no      │ no      │ yes     │ yes    │ ManagedInstall   │ ~/.dotver/installs/10.0.201/sdk │
+│ 8.0.412  │ yes     │ yes     │ yes     │ yes    │ ManagedInstall   │ ~/.dotver/installs/8.0.412/sdk  │
+│ 6.0.428  │ no      │ no      │ no      │ no     │ OfficialInstall  │ /usr/share/dotnet/sdk/6.0.428   │
+╰──────────┴─────────┴─────────┴─────────┴────────┴──────────────────┴─────────────────────────────────╯
+```
+
+### Switch version in a project using global.json
+
+```bash
+# Project has global.json with sdk.version = "10.0.201"
+$ dotver install 10.0.201
+$ dotver use 10.0.201
+
+$ dotnet --version
+10.0.201
+
+# Back to default outside the project
+$ cd ~
+$ dotnet --version
+8.0.412
+```
+
+### Create an alias and use it across projects
+
+```bash
+$ dotver alias preview 10.0.201
+Alias preview -> 10.0.201
+
+$ dotver use preview
+Current -> 10.0.201
+
+$ dotver alias
+┌─────────┬──────────┐
+│ Alias   │ Version  │
+├─────────┼──────────┤
+│ lts     │ 8.0.412  │
+│ preview │ 10.0.201 │
+└─────────┴──────────┘
+```
+
+### Check environment health
+
+```bash
+$ dotver doctor
+╔══════════════════╤═══════════════╗
+║ Doctor           │               ║
+╠══════════════════╪═══════════════╣
+║ SDKs detected    │ 3             ║
+║ Managed SDKs     │ 2             ║
+║ Direct-select    │ 2             ║
+║ Current          │ 10.0.201      ║
+║ Default          │ 8.0.412       ║
+║ Aliases          │ 2             ║
+║ Warning          │ None          ║
+╚══════════════════╧═══════════════╝
+```
+
+### Install via npm (no .NET required)
+
+```bash
+npm install -g dotver
+# or
+npx dotver list
+```
+
+### Install via WinGet (Windows)
+
+```bash
+winget install DotVer.DotVer
+```
+
 ## Operational model
 
 `dotver` distinguishes between two types of inventory:
@@ -41,7 +146,7 @@ This is intentional: an official root like `C:\Program Files\dotnet` may contain
 
 ## Automatic configuration
 
-`dotver` now automatically configures:
+`dotver` automatically configures on first use:
 
 - shims in `~/.dotver/shims`
 - persistent user `PATH`
@@ -58,13 +163,3 @@ On Windows, the current process cannot mutate the already-open parent shell; if 
   - `dotnet-install` script.
   - SDK installation detection.
   - packaging/publishing on WinGet.
-
-## CI/CD
-
-- `ci.yml`: restore, build, and test on Windows, Linux, and macOS, including bootstrap and per-platform shim coverage.
-- `release.yml`: publishes binaries per RID, GitHub release, npm package, and WinGet manifests as artifacts, including `osx-arm64` and `osx-x64`.
-
-## Known limitations
-
-- `dotver` can detect multi-version external SDKs, but cannot reliably force an exact version within an official multi-SDK root without relying on `global.json`. This behavior respects the actual semantics of the .NET CLI.
-- Publishing to WinGet requires review of the WinGet ecosystem. The pipeline leaves the manifests ready and can be extended for automatic submission with the appropriate secrets.
