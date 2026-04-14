@@ -1,18 +1,18 @@
 # dotver
 
-`dotver` es un gestor de versiones de SDK de .NET inspirado en la ergonomia de `nvm` y `sdkman`, pero centrado en el ecosistema `dotnet`.
+`dotver` is a .NET SDK version manager inspired by the ergonomics of `nvm` and `sdkman`, but focused on the `dotnet` ecosystem.
 
-## Objetivos
+## Goals
 
-- TUI/CLI interactiva con `Spectre.Console`.
-- Multiplaforma: Windows, Linux y macOS.
-- Deteccion de SDKs instalados por raiz oficial, `DOTNET_ROOT`, `PATH` y roots registradas manualmente.
-- Instalaciones aisladas en `~/.dotver/installs/<version>` usando el script oficial `dotnet-install`.
-- Shims para interceptar `dotnet --info`, `dotnet --list-sdks` y `dotnet --version`.
-- Tests unitarios y pipelines para build/release.
-- Empaquetado preparado para npm y generacion de manifests para WinGet.
+- Interactive TUI/CLI with `Spectre.Console`.
+- Cross-platform: Windows, Linux, and macOS.
+- Detection of installed SDKs via official root, `DOTNET_ROOT`, `PATH`, and manually registered roots.
+- Isolated installations in `~/.dotver/installs/<version>` using the official `dotnet-install` script.
+- Shims to intercept `dotnet --info`, `dotnet --list-sdks`, and `dotnet --version`.
+- Unit tests and pipelines for build/release.
+- Packaging prepared for npm and manifest generation for WinGet.
 
-## Comandos principales
+## Main commands
 
 ```bash
 dotver
@@ -30,41 +30,41 @@ dotver doctor
 dotver register-root /custom/dotnet
 ```
 
-## Modelo operacional
+## Operational model
 
-`dotver` diferencia entre dos tipos de inventario:
+`dotver` distinguishes between two types of inventory:
 
-- `managed`: SDKs aislados bajo `~/.dotver/installs/<version>`, directamente seleccionables.
-- `external`: SDKs encontrados en roots oficiales o personalizadas del sistema. Estos se detectan y auditan, pero solo se pueden usar directamente cuando su host root contiene un unico SDK.
+- `managed`: Isolated SDKs under `~/.dotver/installs/<version>`, directly selectable.
+- `external`: SDKs found in official or custom system roots. These are detected and audited, but can only be used directly when their host root contains a single SDK.
 
-Esto es intencional: una raiz oficial como `C:\Program Files\dotnet` puede contener multiples SDKs, y el host `dotnet` decide cual usar segun `global.json` y las reglas de roll-forward de la CLI.
+This is intentional: an official root like `C:\Program Files\dotnet` may contain multiple SDKs, and the host `dotnet` decides which one to use based on `global.json` and the CLI's roll-forward rules.
 
-## Configuracion automatica
+## Automatic configuration
 
-`dotver` ahora configura automaticamente:
+`dotver` now automatically configures:
 
-- shims en `~/.dotver/shims`
-- `PATH` persistente del usuario
-- perfiles de PowerShell en Windows y perfiles soportados en Linux/macOS
-- `current` y `default` al instalar un SDK
+- shims in `~/.dotver/shims`
+- persistent user `PATH`
+- PowerShell profiles on Windows and supported profiles on Linux/macOS
+- `current` and `default` when installing an SDK
 
-En Windows, el proceso actual no puede mutar el shell padre ya abierto; si el PATH persistente cambia, basta con abrir una nueva terminal.
+On Windows, the current process cannot mutate the already-open parent shell; if the persistent PATH changes, simply open a new terminal.
 
-## Documentacion usada
+## Documentation used
 
-- `Spectre.Console` y `Spectre.Console.Cli` via Context7 para estructura de `CommandApp`, DI, prompts y testing.
-- Microsoft Learn para:
-  - `global.json` y seleccion de SDKs.
+- `Spectre.Console` and `Spectre.Console.Cli` via Context7 for `CommandApp` structure, DI, prompts, and testing.
+- Microsoft Learn for:
+  - `global.json` and SDK selection.
   - `dotnet-install` script.
-  - deteccion de instalaciones de SDK.
-  - empaquetado/publicacion en WinGet.
+  - SDK installation detection.
+  - packaging/publishing on WinGet.
 
 ## CI/CD
 
-- `ci.yml`: restore, build y test en Windows, Linux y macOS, incluyendo cobertura del bootstrap y los shims por plataforma.
-- `release.yml`: publica binarios por RID, release de GitHub, paquete npm y manifests de WinGet como artifact, incluyendo `osx-arm64` y `osx-x64`.
+- `ci.yml`: restore, build, and test on Windows, Linux, and macOS, including bootstrap and per-platform shim coverage.
+- `release.yml`: publishes binaries per RID, GitHub release, npm package, and WinGet manifests as artifacts, including `osx-arm64` and `osx-x64`.
 
-## Limitaciones conscientes
+## Known limitations
 
-- `dotver` puede detectar SDKs externos multi-version, pero no puede forzar de forma fiable una version exacta dentro de una raiz oficial multi-SDK sin apoyarse en `global.json`. Ese comportamiento respeta la semantica real de la CLI de .NET.
-- La publicacion en WinGet requiere revision del ecosistema WinGet. El pipeline deja los manifests listos y puede extenderse para submission automatica con los secretos adecuados.
+- `dotver` can detect multi-version external SDKs, but cannot reliably force an exact version within an official multi-SDK root without relying on `global.json`. This behavior respects the actual semantics of the .NET CLI.
+- Publishing to WinGet requires review of the WinGet ecosystem. The pipeline leaves the manifests ready and can be extended for automatic submission with the appropriate secrets.

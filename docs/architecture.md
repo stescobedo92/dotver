@@ -1,72 +1,72 @@
-# Arquitectura
+# Architecture
 
-## Capas
+## Layers
 
 - `DotVer.Domain`
-  - modelos inmutables (`SdkInstallation`, `SdkVersion`, `DotVerConfig`)
-  - reglas de comparacion y representacion.
+  - immutable models (`SdkInstallation`, `SdkVersion`, `DotVerConfig`)
+  - comparison and representation rules.
 - `DotVer.Application`
-  - casos de uso y coordinacion.
-  - servicios de inventario, resolucion, seleccion, intercepcion, shims e instalacion.
+  - use cases and coordination.
+  - inventory, resolution, selection, interception, shims, and installation services.
 - `DotVer.Infrastructure`
-  - sistema operativo, procesos, HTTP, persistencia JSON y registro DI.
+  - operating system, processes, HTTP, JSON persistence, and DI registration.
 - `DotVer.Cli`
   - `Spectre.Console` / `Spectre.Console.Cli`.
-  - comandos de usuario y dashboard TUI.
+  - user commands and TUI dashboard.
 - `DotVer.Tests`
-  - pruebas unitarias con sandboxes de filesystem y dobles de `IConfigStore` / `IProcessRunner`.
+  - unit tests with filesystem sandboxes and `IConfigStore` / `IProcessRunner` test doubles.
 
-## Flujos clave
+## Key Flows
 
-### Resolucion de SDK activo
+### Active SDK Resolution
 
-1. Buscar `global.json` desde el directorio actual hacia arriba.
-2. Si existe `currentVersion`, usarlo primero.
-3. Si no aplica, usar `defaultVersion`.
-4. Si no aplica, resolver `global.json` y su `rollForward` sobre inventario local.
-5. Si no aplica, caer al host oficial del sistema.
+1. Search for `global.json` from the current directory upward.
+2. If `currentVersion` exists, use it first.
+3. If not applicable, use `defaultVersion`.
+4. If not applicable, resolve `global.json` and its `rollForward` against the local inventory.
+5. If not applicable, fall back to the official system host.
 
-### Inventario
+### Inventory
 
-Fuentes:
+Sources:
 
 - `~/.dotver/installs/*`
-- roots oficiales conocidas por plataforma
+- well-known official roots per platform
 - `DOTNET_ROOT`
-- entradas de `PATH`
-- roots registradas manualmente
+- `PATH` entries
+- manually registered roots
 
-Cada raiz se clasifica y luego se proyecta a uno o mas `SdkInstallation`.
+Each root is classified and then projected into one or more `SdkInstallation` instances.
 
-### Intercepcion
+### Interception
 
-Los shims llaman:
+The shims call:
 
 ```text
-dotver intercept -- <args-originales>
+dotver intercept -- <original-args>
 ```
 
-Reglas:
+Rules:
 
-- `dotnet --version` -> devuelve la version activa resuelta.
-- `dotnet --list-sdks` -> devuelve el inventario consolidado.
-- `dotnet --info` -> delega al host real y anexa diagnostico de dotver.
-- cualquier otro comando -> se reenvia al `dotnet` resuelto.
+- `dotnet --version` -> returns the resolved active version.
+- `dotnet --list-sdks` -> returns the consolidated inventory.
+- `dotnet --info` -> delegates to the real host and appends dotver diagnostics.
+- any other command -> is forwarded to the resolved `dotnet`.
 
-### Bootstrap automatico de entorno
+### Automatic Environment Bootstrap
 
-En cada comando util, `dotver` garantiza:
+On every useful command, `dotver` ensures:
 
-- generacion idempotente de shims
-- presencia de `~/.dotver/shims` en `PATH`
-- persistencia de `DOTVER_HOME`
-- actualizacion best-effort de perfiles de PowerShell en Windows
-- actualizacion best-effort de perfiles de shell en Unix
+- idempotent shim generation
+- presence of `~/.dotver/shims` in `PATH`
+- persistence of `DOTVER_HOME`
+- best-effort update of PowerShell profiles on Windows
+- best-effort update of shell profiles on Unix
 
-La sesion padre de la terminal no puede ser modificada directamente desde un proceso hijo en Windows; por eso el cambio persistente se refleja por completo al abrir una terminal nueva.
+The parent terminal session cannot be modified directly from a child process on Windows; therefore the persistent change is fully reflected only when opening a new terminal.
 
-## Decisiones de diseno
+## Design Decisions
 
-- El estado persistente vive en `~/.dotver/config.json`.
-- Las instalaciones administradas usan el script oficial `dotnet-install` para conservar compatibilidad multiplataforma y evitar privilegios elevados.
-- Los shims son archivos simples (`.cmd`, `.ps1`, `bash/fish`) para que el comportamiento sea visible y depurable.
+- Persistent state lives in `~/.dotver/config.json`.
+- Managed installations use the official `dotnet-install` script to preserve cross-platform compatibility and avoid elevated privileges.
+- Shims are simple files (`.cmd`, `.ps1`, `bash/fish`) so that behavior is visible and debuggable.
