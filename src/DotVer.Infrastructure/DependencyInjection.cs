@@ -29,6 +29,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IDoctorService, DoctorService>();
         services.AddSingleton<IPruneService, PruneService>();
         services.AddSingleton<IAuditService, AuditService>();
+        services.AddSingleton<IWorkspaceService, WorkspaceService>();
 
         // Dedicated metadata client: redirects are never followed, so a
         // poisoned endpoint cannot bounce requests to internal services.

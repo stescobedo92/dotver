@@ -1,10 +1,12 @@
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using DotVer.Domain;
+using Microsoft.Win32.SafeHandles;
 
 namespace DotVer.Application;
 
-public sealed class GlobalJsonService : IGlobalJsonService
+public sealed partial class GlobalJsonService : IGlobalJsonService
 {
     private static readonly JsonDocumentOptions DocumentOptions = new()
     {
@@ -19,33 +21,62 @@ public sealed class GlobalJsonService : IGlobalJsonService
     public GlobalJsonRequest? TryFind(string workingDirectory)
     {
         var candidate = FindFileUpward(workingDirectory);
-        if (candidate is null)
+        return candidate is null ? null : TryRead(candidate);
+    }
+
+    public GlobalJsonRequest? TryRead(string filePath) => Read(filePath).Request;
+
+    public GlobalJsonReadResult Read(string filePath)
+    {
+        var candidate = Path.GetFullPath(filePath);
+        if (!File.Exists(candidate))
         {
-            return null;
+            return new GlobalJsonReadResult(GlobalJsonReadStatus.NoPin, null);
         }
 
         try
         {
-            if (new FileInfo(candidate).Length > MaxGlobalJsonBytes)
+            // Open without following links and validate the opened handle
+            // itself (no check-then-open race): links and special files
+            // (FIFO/device) are rejected instead of followed or blocked on.
+            using var stream = OpenRegularFile(candidate);
+            if (stream is null)
             {
-                return null;
+                return new GlobalJsonReadResult(GlobalJsonReadStatus.Invalid, null);
             }
 
-            using var stream = File.OpenRead(candidate);
-            using var document = JsonDocument.Parse(stream, DocumentOptions);
+            var bytes = ReadBounded(stream);
+            if (bytes is null)
+            {
+                return new GlobalJsonReadResult(GlobalJsonReadStatus.Invalid, null);
+            }
+
+            using var document = JsonDocument.Parse(bytes, DocumentOptions);
             var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object ||
-                !root.TryGetProperty("sdk", out var sdkNode) ||
-                sdkNode.ValueKind != JsonValueKind.Object)
+            if (root.ValueKind != JsonValueKind.Object)
             {
-                return null;
+                return new GlobalJsonReadResult(GlobalJsonReadStatus.Invalid, null);
             }
 
-            if (!sdkNode.TryGetProperty("version", out var versionNode) ||
-                versionNode.ValueKind != JsonValueKind.String ||
+            if (!root.TryGetProperty("sdk", out var sdkNode))
+            {
+                return new GlobalJsonReadResult(GlobalJsonReadStatus.NoPin, null);
+            }
+
+            if (sdkNode.ValueKind != JsonValueKind.Object)
+            {
+                return new GlobalJsonReadResult(GlobalJsonReadStatus.Invalid, null);
+            }
+
+            if (!sdkNode.TryGetProperty("version", out var versionNode))
+            {
+                return new GlobalJsonReadResult(GlobalJsonReadStatus.NoPin, null);
+            }
+
+            if (versionNode.ValueKind != JsonValueKind.String ||
                 !SdkVersion.TryParse(versionNode.GetString(), out var version))
             {
-                return null;
+                return new GlobalJsonReadResult(GlobalJsonReadStatus.Invalid, null);
             }
 
             var rollForward = sdkNode.TryGetProperty("rollForward", out var rollForwardNode) &&
@@ -53,13 +84,183 @@ public sealed class GlobalJsonService : IGlobalJsonService
                 ? ParseRollForward(rollForwardNode.GetString())
                 : SdkRollForward.Default;
 
-            return new GlobalJsonRequest(version!, rollForward, candidate);
+            return new GlobalJsonReadResult(
+                GlobalJsonReadStatus.Pin,
+                new GlobalJsonRequest(version!, rollForward, candidate));
         }
-        catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException or InvalidOperationException)
+        catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException or InvalidOperationException or EntryPointNotFoundException or DllNotFoundException)
         {
             // A malformed global.json must not break every intercepted dotnet call.
+            return new GlobalJsonReadResult(GlobalJsonReadStatus.Invalid, null);
+        }
+    }
+
+    private static FileStream? OpenRegularFile(string path) =>
+        OperatingSystem.IsWindows() ? OpenRegularFileWindows(path) : OpenRegularFileUnix(path);
+
+    private static FileStream? OpenRegularFileWindows(string path)
+    {
+        const uint genericRead = 0x80000000;
+        const uint fileShareRead = 0x00000001;
+        const uint openExisting = 3;
+        const uint fileFlagOpenReparsePoint = 0x00200000;
+        const uint fileAttributeReparsePoint = 0x00000400;
+
+        var handle = CreateFileW(path, genericRead, fileShareRead, 0, openExisting, fileFlagOpenReparsePoint, 0);
+        if (handle.IsInvalid)
+        {
+            handle.Dispose();
             return null;
         }
+
+        if (!GetFileInformationByHandle(handle, out var info) ||
+            (info.FileAttributes & fileAttributeReparsePoint) != 0 ||
+            (info.FileAttributes & (uint)FileAttributes.Directory) != 0)
+        {
+            handle.Dispose();
+            return null;
+        }
+
+        return new FileStream(handle, FileAccess.Read);
+    }
+
+    private static FileStream? OpenRegularFileUnix(string path)
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            // Unknown Unix platform: fail closed instead of guessing layouts.
+            return null;
+        }
+
+        // O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC (values differ per platform).
+        var flags = OperatingSystem.IsMacOS()
+            ? 0x0100 | 0x0004 | 0x1000000
+            : 0x20000 | 0x0800 | 0x80000;
+
+        var fd = UnixOpen(path, flags);
+        if (fd < 0)
+        {
+            return null;
+        }
+
+        SafeFileHandle? handle = null;
+        try
+        {
+            if (!IsRegularFileDescriptor(fd))
+            {
+                _ = UnixClose(fd);
+                fd = -1;
+                return null;
+            }
+
+            handle = new SafeFileHandle((IntPtr)fd, ownsHandle: true);
+            fd = -1;
+            var stream = new FileStream(handle, FileAccess.Read);
+            handle = null;
+            return stream;
+        }
+        catch
+        {
+            handle?.Dispose();
+            if (fd >= 0)
+            {
+                _ = UnixClose(fd);
+            }
+
+            throw;
+        }
+    }
+
+    private static bool IsRegularFileDescriptor(int fd)
+    {
+        const uint sIfmt = 0xF000;
+        const uint sIfReg = 0x8000;
+
+        if (OperatingSystem.IsLinux())
+        {
+            // struct statx has a fixed layout on every Linux architecture:
+            // stx_mode is a ushort at offset 28. AT_EMPTY_PATH stats the fd.
+            const int atSymlinkNoFollow = 0x0100;
+            const int atEmptyPath = 0x1000;
+            const uint statxTypeAndMode = 0x0003;
+            var statx = new byte[256];
+            return LinuxStatx(fd, string.Empty, atSymlinkNoFollow | atEmptyPath, statxTypeAndMode, statx) == 0 &&
+                   (BitConverter.ToUInt16(statx, 28) & sIfmt) == sIfReg;
+        }
+
+        // macOS INODE64 stat layout: st_dev (int32) at 0, st_mode (ushort) at 4.
+        // x64 needs the $INODE64 symbol explicitly; arm64 only ships INODE64.
+        var stat = new byte[144];
+        var result = RuntimeInformation.ProcessArchitecture switch
+        {
+            Architecture.X64 => MacInode64Fstat(fd, stat),
+            Architecture.Arm64 => UnixFstat(fd, stat),
+            _ => -1
+        };
+
+        return result == 0 && (BitConverter.ToUInt16(stat, 4) & sIfmt) == sIfReg;
+    }
+
+    [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
+    private static partial SafeFileHandle CreateFileW(
+        string fileName,
+        uint desiredAccess,
+        uint shareMode,
+        nint securityAttributes,
+        uint creationDisposition,
+        uint flagsAndAttributes,
+        nint templateFile);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "GetFileInformationByHandle", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetFileInformationByHandle(SafeFileHandle handle, out ByHandleFileInformation info);
+
+    [LibraryImport("libc", EntryPoint = "open", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
+    private static partial int UnixOpen(string pathname, int flags);
+
+    [LibraryImport("libc", EntryPoint = "fstat", SetLastError = true)]
+    private static partial int UnixFstat(int fd, byte[] buffer);
+
+    [LibraryImport("libc", EntryPoint = "fstat$INODE64", SetLastError = true)]
+    private static partial int MacInode64Fstat(int fd, byte[] buffer);
+
+    [LibraryImport("libc", EntryPoint = "statx", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
+    private static partial int LinuxStatx(int directoryFd, string pathname, int flags, uint mask, byte[] buffer);
+
+    [LibraryImport("libc", EntryPoint = "close", SetLastError = true)]
+    private static partial int UnixClose(int fd);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ByHandleFileInformation
+    {
+        public uint FileAttributes;
+        public long CreationTime;
+        public long LastAccessTime;
+        public long LastWriteTime;
+        public uint VolumeSerialNumber;
+        public uint FileSizeHigh;
+        public uint FileSizeLow;
+        public uint NumberOfLinks;
+        public uint FileIndexHigh;
+        public uint FileIndexLow;
+    }
+
+    private static byte[]? ReadBounded(Stream stream)
+    {
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        int read;
+        while ((read = stream.Read(chunk, 0, chunk.Length)) > 0)
+        {
+            if (buffer.Length + read > MaxGlobalJsonBytes)
+            {
+                return null;
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+
+        return buffer.ToArray();
     }
 
     public GlobalJsonWriteResult WritePin(string directory, SdkVersion version, SdkRollForward? rollForward)

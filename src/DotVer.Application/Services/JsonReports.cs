@@ -295,6 +295,56 @@ public static class JsonReports
         return Root(new JsonObject { ["sdks"] = items });
     }
 
+    public static string ForScan(WorkspaceScanResult scan, IReadOnlyList<string>? installedVersions = null, IReadOnlyList<string>? errors = null)
+    {
+        ArgumentNullException.ThrowIfNull(scan);
+
+        var items = new JsonArray();
+        foreach (var entry in scan.Entries)
+        {
+            items.Add(new JsonObject
+            {
+                ["filePath"] = entry.FilePath,
+                ["requestedVersion"] = entry.RequestedVersion,
+                ["rollForward"] = entry.RollForward,
+                ["matchedVersion"] = entry.MatchedVersion,
+                ["satisfied"] = entry.Satisfied,
+                ["invalid"] = entry.Invalid
+            });
+        }
+
+        var payload = new JsonObject
+        {
+            ["root"] = scan.Root,
+            ["truncated"] = scan.Truncated,
+            ["pins"] = items
+        };
+
+        if (installedVersions is not null)
+        {
+            var installed = new JsonArray();
+            foreach (var version in installedVersions)
+            {
+                installed.Add(version);
+            }
+
+            payload["installedVersions"] = installed;
+        }
+
+        if (errors is not null)
+        {
+            var errorItems = new JsonArray();
+            foreach (var error in errors)
+            {
+                errorItems.Add(error);
+            }
+
+            payload["errors"] = errorItems;
+        }
+
+        return Root(payload);
+    }
+
     private static string Root(JsonObject payload)
     {
         var root = new JsonObject { ["schemaVersion"] = SchemaVersion };

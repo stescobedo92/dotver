@@ -43,13 +43,14 @@ var isWhich = args.Length > 0 && string.Equals(args[0], "which", StringCompariso
 var isComplete = args.Length > 0 && string.Equals(args[0], "__complete", StringComparison.OrdinalIgnoreCase);
 var isCompletions = args.Length > 0 && string.Equals(args[0], "completions", StringComparison.OrdinalIgnoreCase);
 var isAudit = args.Length > 0 && string.Equals(args[0], "audit", StringComparison.OrdinalIgnoreCase);
+var isScan = args.Length > 0 && string.Equals(args[0], "scan", StringComparison.OrdinalIgnoreCase);
 // For exec, only an immediate `exec --help` is dotver help; later --help belongs to the child.
 var wantsHelp = isExec
     ? args.Length > 1 && (string.Equals(args[1], "--help", StringComparison.OrdinalIgnoreCase) || string.Equals(args[1], "-h", StringComparison.OrdinalIgnoreCase))
     : args.Contains("--help", StringComparer.OrdinalIgnoreCase) || args.Contains("-h", StringComparer.OrdinalIgnoreCase);
 
 // exec/which/completions resolve directly and must stay side-effect free for scripts.
-if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions && !isAudit)
+if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions && !isAudit && !isScan)
 {
     await bootstrap.EnsureConfiguredAsync(CancellationToken.None);
 }
@@ -133,6 +134,9 @@ app.Configure(config =>
     config.AddCommand<EnsureCommand>("ensure")
         .WithAlias("sync")
         .WithDescription("Installs the SDK pinned by global.json if it is missing.");
+
+    config.AddCommand<ScanCommand>("scan")
+        .WithDescription("Scans a directory tree for global.json pins and reports which are satisfied. Exits non-zero if any pin is missing.");
 
     config.AddCommand<InstallCommand>("install")
         .WithDescription("Installs an isolated SDK using the official .NET install script.");

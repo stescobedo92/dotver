@@ -24,11 +24,19 @@ public sealed class EnsureService : IEnsureService
         _environment = environment;
     }
 
-    public async Task<EnsureOutcome> EnsureAsync(bool setCurrent, CancellationToken cancellationToken)
+    public async Task<EnsureOutcome> EnsureAsync(bool setCurrent, string? directory, CancellationToken cancellationToken)
     {
-        var request = _globalJsonService.TryFind(_environment.CurrentDirectory)
+        var startDirectory = string.IsNullOrWhiteSpace(directory)
+            ? _environment.CurrentDirectory
+            : Path.GetFullPath(directory);
+        if (!Directory.Exists(startDirectory))
+        {
+            throw new InvalidOperationException($"Directory '{startDirectory}' does not exist.");
+        }
+
+        var request = _globalJsonService.TryFind(startDirectory)
             ?? throw new InvalidOperationException(
-                $"No global.json pin found at or above '{_environment.CurrentDirectory}'. Create one with 'dotver local <version>'.");
+                $"No global.json pin found at or above '{startDirectory}'. Create one with 'dotver local <version>'.");
 
         var inventory = await _inventoryService.ScanAsync(cancellationToken).ConfigureAwait(false);
         var matched = GlobalJsonMatcher.Match(request, inventory);

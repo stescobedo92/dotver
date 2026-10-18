@@ -16,9 +16,7 @@ public sealed class JsonConfigStore : IConfigStore
 
     public async Task<DotVerConfig> LoadAsync(CancellationToken cancellationToken)
     {
-        var directory = Path.GetDirectoryName(_paths.ConfigFile)!;
-        Directory.CreateDirectory(directory);
-
+        // Loading must stay read-only (audit/scan rely on it); Save creates dirs.
         if (!File.Exists(_paths.ConfigFile))
         {
             return DotVerConfig.Empty;

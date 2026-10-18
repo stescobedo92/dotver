@@ -13,7 +13,7 @@ public sealed class EnsureServiceTests
         var sdk = sandbox.CreateSdkInstall("8.0.412", isManaged: true);
         var harness = new Harness(sandbox, [sdk]);
 
-        var outcome = await harness.Service.EnsureAsync(setCurrent: false, CancellationToken.None);
+        var outcome = await harness.Service.EnsureAsync(setCurrent: false, directory: null, CancellationToken.None);
 
         Assert.False(outcome.InstalledNow);
         Assert.Equal("8.0.412", outcome.Installation.Version.Raw);
@@ -33,7 +33,7 @@ public sealed class EnsureServiceTests
             return installed;
         };
 
-        var outcome = await harness.Service.EnsureAsync(setCurrent: false, CancellationToken.None);
+        var outcome = await harness.Service.EnsureAsync(setCurrent: false, directory: null, CancellationToken.None);
 
         Assert.True(outcome.InstalledNow);
         Assert.Equal(["8.0.412"], harness.InstallService.Calls);
@@ -48,7 +48,7 @@ public sealed class EnsureServiceTests
         var harness = new Harness(sandbox, []);
 
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => harness.Service.EnsureAsync(setCurrent: false, CancellationToken.None));
+            () => harness.Service.EnsureAsync(setCurrent: false, directory: null, CancellationToken.None));
     }
 
     [Fact]
@@ -59,7 +59,7 @@ public sealed class EnsureServiceTests
         var sdk = sandbox.CreateSdkInstall("8.0.412", isManaged: true);
         var harness = new Harness(sandbox, [sdk]);
 
-        await harness.Service.EnsureAsync(setCurrent: true, CancellationToken.None);
+        await harness.Service.EnsureAsync(setCurrent: true, directory: null, CancellationToken.None);
 
         var config = await harness.ConfigStore.LoadAsync(CancellationToken.None);
         Assert.Equal("8.0.412", config.CurrentVersion);
@@ -74,7 +74,7 @@ public sealed class EnsureServiceTests
         var sdk = sandbox.CreateSdkInstall("8.0.412", isManaged: true);
         var harness = new Harness(sandbox, [sdk]);
 
-        var outcome = await harness.Service.EnsureAsync(setCurrent: false, CancellationToken.None);
+        var outcome = await harness.Service.EnsureAsync(setCurrent: false, directory: null, CancellationToken.None);
 
         Assert.False(outcome.InstalledNow);
         Assert.Equal("8.0.412", outcome.Installation.Version.Raw);
@@ -94,7 +94,7 @@ public sealed class EnsureServiceTests
             return exact;
         };
 
-        var outcome = await harness.Service.EnsureAsync(setCurrent: false, CancellationToken.None);
+        var outcome = await harness.Service.EnsureAsync(setCurrent: false, directory: null, CancellationToken.None);
 
         Assert.True(outcome.InstalledNow);
         Assert.Equal("8.0.412", outcome.Installation.Version.Raw);
@@ -157,3 +157,4 @@ public sealed class EnsureServiceTests
             throw new NotSupportedException();
     }
 }
+
