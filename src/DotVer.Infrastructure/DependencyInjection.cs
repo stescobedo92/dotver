@@ -26,6 +26,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IExecService, ExecService>();
         services.AddSingleton<IOutdatedService, OutdatedService>();
         services.AddSingleton<ICompletionDataService, CompletionDataService>();
+        services.AddSingleton<IDoctorService, DoctorService>();
+        services.AddSingleton<IPruneService, PruneService>();
 
         return services;
     }

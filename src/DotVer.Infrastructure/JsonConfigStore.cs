@@ -34,8 +34,26 @@ public sealed class JsonConfigStore : IConfigStore
         var directory = Path.GetDirectoryName(_paths.ConfigFile)!;
         Directory.CreateDirectory(directory);
 
-        await using var stream = File.Create(_paths.ConfigFile);
-        await JsonSerializer.SerializeAsync(stream, config, DotVerJsonContext.Default.DotVerConfig, cancellationToken).ConfigureAwait(false);
+        // Atomic replace: never truncate the live config in place.
+        var temp = Path.Combine(directory, $".config.json.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                await JsonSerializer.SerializeAsync(stream, config, DotVerJsonContext.Default.DotVerConfig, cancellationToken).ConfigureAwait(false);
+            }
+
+            File.Move(temp, _paths.ConfigFile, overwrite: true);
+        }
+        catch
+        {
+            if (File.Exists(temp))
+            {
+                File.Delete(temp);
+            }
+
+            throw;
+        }
     }
 }
 

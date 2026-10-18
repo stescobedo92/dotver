@@ -11,7 +11,7 @@ public static class CompletionScripts
 {
     private const string Commands =
         "dashboard home list ls current use local pin default alias unalias ensure sync install " +
-        "outdated upgrade list-remote ls-remote uninstall doctor register-root exec which completions deactivate";
+        "outdated upgrade list-remote ls-remote uninstall doctor prune register-root exec which completions deactivate";
 
     public static string Render(ShellKind shell) =>
         shell switch
@@ -126,7 +126,7 @@ public static class CompletionScripts
     private const string Fish = """
         # dotver completion (fish). Save to ~/.config/fish/completions/dotver.fish
         complete -c dotver -f
-        complete -c dotver -n '__fish_use_subcommand' -a 'dashboard home list ls current use local pin default alias unalias ensure sync install outdated upgrade list-remote ls-remote uninstall doctor register-root exec which completions deactivate'
+        complete -c dotver -n '__fish_use_subcommand' -a 'dashboard home list ls current use local pin default alias unalias ensure sync install outdated upgrade list-remote ls-remote uninstall doctor prune register-root exec which completions deactivate'
         complete -c dotver -n '__fish_seen_subcommand_from use default' -a '(dotver __complete tokens 2>/dev/null)'
         complete -c dotver -n '__fish_seen_subcommand_from local pin exec which install' -a '(dotver __complete sdk-tokens 2>/dev/null)'
         complete -c dotver -n '__fish_seen_subcommand_from uninstall upgrade' -a '(dotver __complete versions 2>/dev/null)'

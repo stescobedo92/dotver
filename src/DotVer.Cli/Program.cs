@@ -150,7 +150,10 @@ app.Configure(config =>
         .WithDescription("Uninstalls a dotver-managed SDK and repairs current/default/aliases.");
 
     config.AddCommand<DoctorCommand>("doctor")
-        .WithDescription("Runs health and readiness checks.");
+        .WithDescription("Runs health and readiness checks. Use --fix to repair fixable issues.");
+
+    config.AddCommand<PruneCommand>("prune")
+        .WithDescription("Shows managed SDK disk usage; --keep-latest-per-channel --yes deletes older patches. Only the current directory's global.json pin is protected.");
 
     config.AddCommand<RegisterRootCommand>("register-root")
         .WithDescription("Registers an additional external root for scanning.");

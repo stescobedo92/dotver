@@ -78,7 +78,8 @@ public static class JsonReports
         IReadOnlyList<SdkInstallation> inventory,
         SdkSelection selection,
         DotVerConfig config,
-        IReadOnlyList<string> warnings)
+        IReadOnlyList<string> warnings,
+        DoctorResult? diagnosis = null)
     {
         ArgumentNullException.ThrowIfNull(inventory);
         ArgumentNullException.ThrowIfNull(selection);
@@ -103,7 +104,7 @@ public static class JsonReports
             warningItems.Add(warning);
         }
 
-        return Root(new JsonObject
+        var payload = new JsonObject
         {
             ["sdksDetected"] = inventory.Count,
             ["managedSdks"] = inventory.Count(static sdk => sdk.IsManaged),
@@ -114,6 +115,57 @@ public static class JsonReports
             ["aliases"] = aliases,
             ["registeredRoots"] = roots,
             ["warnings"] = warningItems
+        };
+
+        if (diagnosis is not null)
+        {
+            var issues = new JsonArray();
+            foreach (var issue in diagnosis.Issues)
+            {
+                issues.Add(new JsonObject
+                {
+                    ["code"] = issue.Code,
+                    ["message"] = issue.Message
+                });
+            }
+
+            var fixes = new JsonArray();
+            foreach (var fix in diagnosis.FixesApplied)
+            {
+                fixes.Add(fix);
+            }
+
+            payload["issues"] = issues;
+            payload["fixesApplied"] = fixes;
+        }
+
+        return Root(payload);
+    }
+
+    public static string ForPrune(PruneResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var items = new JsonArray();
+        foreach (var entry in result.Entries)
+        {
+            items.Add(new JsonObject
+            {
+                ["version"] = entry.Version,
+                ["channel"] = entry.Channel,
+                ["sizeBytes"] = entry.SizeBytes,
+                ["hostRoot"] = entry.HostRoot,
+                ["action"] = entry.Action.ToString(),
+                ["reason"] = entry.Reason
+            });
+        }
+
+        return Root(new JsonObject
+        {
+            ["dryRun"] = result.DryRun,
+            ["totalBytes"] = result.TotalBytes,
+            ["reclaimableBytes"] = result.ReclaimableBytes,
+            ["sdks"] = items
         });
     }
 
