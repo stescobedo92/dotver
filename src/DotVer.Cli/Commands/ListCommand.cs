@@ -27,6 +27,12 @@ internal sealed class ListCommand : AsyncCommandBase<ListSettings>
 
         var filtered = settings.ManagedOnly ? inventory.Where(static sdk => sdk.IsManaged).ToList() : inventory;
 
+        if (settings.Json)
+        {
+            global::System.Console.Out.WriteLine(JsonReports.ForList(filtered, selection, config));
+            return 0;
+        }
+
         var table = new Table().Border(TableBorder.Rounded);
         table.AddColumn("Version");
         table.AddColumn("Current");

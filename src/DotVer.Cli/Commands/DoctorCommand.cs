@@ -25,6 +25,16 @@ internal sealed class DoctorCommand : AsyncCommandBase<DoctorSettings>
         var selection = await _selectionService.ResolveAsync(CancellationToken.None).ConfigureAwait(false);
         var config = await _stateService.GetConfigAsync(CancellationToken.None).ConfigureAwait(false);
 
+        var warnings = inventory.Any(static sdk => !sdk.CanBeUsedDirectly)
+            ? new[] { "There are multi-SDK roots that serve only for detection/inspection." }
+            : Array.Empty<string>();
+
+        if (settings.Json)
+        {
+            global::System.Console.Out.WriteLine(JsonReports.ForDoctor(inventory, selection, config, warnings));
+            return 0;
+        }
+
         var grid = new Grid();
         grid.AddColumn();
         grid.AddColumn();

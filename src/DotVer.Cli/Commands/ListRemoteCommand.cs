@@ -5,7 +5,7 @@ using Spectre.Console.Cli;
 
 namespace DotVer.Cli;
 
-internal sealed class ListRemoteCommand : AsyncCommandBase
+internal sealed class ListRemoteCommand : AsyncCommandBase<ListRemoteSettings>
 {
     private readonly IInstallService _installService;
 
@@ -15,9 +15,15 @@ internal sealed class ListRemoteCommand : AsyncCommandBase
         _installService = installService;
     }
 
-    public override async Task<int> ExecuteAsync(CommandContext context)
+    public override async Task<int> ExecuteAsync(CommandContext context, ListRemoteSettings settings)
     {
         var channels = await _installService.ListRemoteAsync(CancellationToken.None).ConfigureAwait(false);
+        if (settings.Json)
+        {
+            global::System.Console.Out.WriteLine(JsonReports.ForRemote(channels));
+            return 0;
+        }
+
         var table = new Table();
         table.AddColumn("Channel");
         table.AddColumn("Latest SDK");
