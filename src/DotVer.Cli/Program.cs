@@ -65,6 +65,10 @@ app.Configure(config =>
     config.AddCommand<UseCommand>("use")
         .WithDescription("Sets the current version.");
 
+    config.AddCommand<LocalCommand>("local")
+        .WithAlias("pin")
+        .WithDescription("Shows, sets or clears the per-project SDK pin in global.json.");
+
     config.AddCommand<DefaultCommand>("default")
         .WithDescription("Sets the default version.");
 

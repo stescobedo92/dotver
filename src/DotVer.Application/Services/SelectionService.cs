@@ -29,6 +29,18 @@ public sealed class SelectionService : ISelectionService
         var installations = await _inventoryService.ScanAsync(cancellationToken).ConfigureAwait(false);
         var config = await _configStore.LoadAsync(cancellationToken).ConfigureAwait(false);
 
+        // A project pin wins inside its directory tree; otherwise the shim could
+        // never honor global.json once a global current/default exists.
+        var globalJson = _globalJsonService.TryFind(_environment.CurrentDirectory);
+        if (globalJson is not null)
+        {
+            var pinned = GlobalJsonMatcher.Match(globalJson, installations);
+            if (pinned is not null)
+            {
+                return new SdkSelection(pinned, $"Selected by global.json ({globalJson.Version.Raw})", true);
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(config.CurrentVersion))
         {
             var current = _versionResolver.FindByToken(config.CurrentVersion, config, installations);
@@ -47,53 +59,10 @@ public sealed class SelectionService : ISelectionService
             }
         }
 
-        var globalJson = _globalJsonService.TryFind(_environment.CurrentDirectory);
-        if (globalJson is not null)
-        {
-            var selection = MatchGlobalJson(globalJson, installations);
-            if (selection is not null)
-            {
-                return new SdkSelection(selection, $"Selected by global.json ({globalJson.Version.Raw})", true);
-            }
-        }
-
         var systemPath = _inventoryService.GetSystemDotnetPath();
         var systemRootSelection = installations.FirstOrDefault(sdk =>
             string.Equals(sdk.DotnetPath, systemPath, _environment.IsWindows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
 
         return new SdkSelection(systemRootSelection, "Selected by system fallback", false);
-    }
-
-    private static SdkInstallation? MatchGlobalJson(GlobalJsonRequest request, IReadOnlyList<SdkInstallation> installations)
-    {
-        var ordered = installations.OrderByDescending(static sdk => sdk.Version).ToList();
-        var exact = ordered.FirstOrDefault(sdk => sdk.Version.CompareTo(request.Version) == 0);
-        if (request.RollForward is SdkRollForward.Default or SdkRollForward.Disable)
-        {
-            return exact;
-        }
-
-        if (exact is not null)
-        {
-            return exact;
-        }
-
-        return request.RollForward switch
-        {
-            SdkRollForward.Patch or SdkRollForward.LatestPatch => ordered.FirstOrDefault(sdk =>
-                sdk.Version.Major == request.Version.Major &&
-                sdk.Version.Minor == request.Version.Minor &&
-                sdk.Version.FeatureBand == request.Version.FeatureBand),
-            SdkRollForward.Feature or SdkRollForward.LatestFeature => ordered.FirstOrDefault(sdk =>
-                sdk.Version.Major == request.Version.Major &&
-                sdk.Version.Minor == request.Version.Minor &&
-                sdk.Version.FeatureBand >= request.Version.FeatureBand),
-            SdkRollForward.Minor or SdkRollForward.LatestMinor => ordered.FirstOrDefault(sdk =>
-                sdk.Version.Major == request.Version.Major &&
-                sdk.Version.Minor >= request.Version.Minor),
-            SdkRollForward.Major or SdkRollForward.LatestMajor => ordered.FirstOrDefault(sdk =>
-                sdk.Version.Major >= request.Version.Major),
-            _ => exact
-        };
     }
 }

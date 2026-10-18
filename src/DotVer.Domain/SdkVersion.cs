@@ -73,9 +73,14 @@ public sealed record SdkVersion(string Raw, int Major, int Minor, int FeatureBan
             return false;
         }
 
-        var major = int.Parse(match.Groups["major"].Value);
-        var minor = int.Parse(match.Groups["minor"].Value);
-        var featureBandComponent = int.Parse(match.Groups["feature"].Value);
+        // \d+ is unbounded: TryParse so an overflowing component fails closed
+        // instead of throwing OverflowException on untrusted input.
+        if (!int.TryParse(match.Groups["major"].Value, out var major) ||
+            !int.TryParse(match.Groups["minor"].Value, out var minor) ||
+            !int.TryParse(match.Groups["feature"].Value, out var featureBandComponent))
+        {
+            return false;
+        }
         var featureBand = featureBandComponent / 100 * 100;
         var patch = featureBandComponent % 100;
 

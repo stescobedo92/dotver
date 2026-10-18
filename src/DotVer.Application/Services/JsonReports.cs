@@ -117,6 +117,18 @@ public static class JsonReports
         });
     }
 
+    public static string ForLocal(string? filePath, string? version, string? rollForward, bool cleared, bool installed)
+    {
+        return Root(new JsonObject
+        {
+            ["filePath"] = filePath,
+            ["version"] = version,
+            ["rollForward"] = rollForward,
+            ["cleared"] = cleared,
+            ["installed"] = installed
+        });
+    }
+
     private static string Root(JsonObject payload)
     {
         var root = new JsonObject { ["schemaVersion"] = SchemaVersion };
