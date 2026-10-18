@@ -16,19 +16,40 @@
 
 ```bash
 dotver
-dotver list
-dotver current
+dotver list [--managed-only] [--json]
+dotver current [--json]
 dotver use 8.0.412
-dotver default 10.0.201
-dotver alias lts 8.0.412
-dotver install 10.0.201
+dotver use system            # clear the persisted current version
+dotver deactivate            # same as `use system`
+dotver default 10.0.201      # `default system` clears the default
+dotver local 8.0.412 [--roll-forward latestFeature]   # pin this project in global.json
+dotver local                 # show the effective pin
+dotver local --clear         # remove this directory's pin (--parent for a parent pin)
+dotver ensure [--use]        # install the SDK pinned by global.json if missing
+dotver alias lts 8.0.412     # reserved names (system/current/default/latest) are rejected
+dotver install 10.0.201 [--no-use] [--no-default]
 dotver install 8.0
 dotver install lts
-dotver list-remote
+dotver list-remote [--json]
+dotver outdated [--all] [--managed-only] [--json]
+dotver upgrade 8.0.400 [--prune-old]
+dotver upgrade --all [--prune-old] [--json]
+dotver exec 8.0 -- dotnet test   # run with one SDK, without changing state
+dotver which [8.0] [--json]      # print the resolved dotnet path
 dotver uninstall 8.0.412
-dotver doctor
+dotver doctor [--fix] [--json]   # exits non-zero while issues remain
+dotver prune [--keep-latest-per-channel --yes] [--json]  # dry-run unless --yes
+dotver completions powershell|bash|zsh|fish
 dotver register-root /custom/dotnet
 ```
+
+Selection precedence for the active SDK is: `DOTVER_VERSION` (exact installed
+version, set automatically by `exec`) > nearest `global.json` pin > persisted
+`current` (`use`) > persisted `default` > system host. An unmatched
+`DOTVER_VERSION` fails loudly instead of silently selecting another SDK.
+
+JSON reports (`--json`, schema version 1) include absolute local paths.
+Treat them as local diagnostics; do not paste them into public issues verbatim.
 
 ## Examples
 
