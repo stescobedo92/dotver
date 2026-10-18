@@ -12,4 +12,5 @@ public interface IStateService
     Task RemoveAliasAsync(string alias, CancellationToken cancellationToken);
     Task RegisterRootAsync(string path, CancellationToken cancellationToken);
     Task<UninstallOutcome> UninstallManagedAsync(string token, CancellationToken cancellationToken);
+    Task<RepointResult> RepointVersionAsync(string fromVersion, string toVersion, CancellationToken cancellationToken);
 }

@@ -18,6 +18,17 @@ public sealed class SdkVersionTests
     }
 
     [Theory]
+    [InlineData("10.0.100-preview.2", "10.0.100-preview.10")]
+    [InlineData("10.0.100-alpha", "10.0.100-alpha.1")]
+    [InlineData("10.0.100-alpha.beta", "10.0.100-beta")]
+    [InlineData("10.0.100-rc.1", "10.0.100")]
+    public void CompareTo_UsesSemVerPrereleasePrecedence(string lower, string higher)
+    {
+        Assert.True(SdkVersion.Parse(lower).CompareTo(SdkVersion.Parse(higher)) < 0);
+        Assert.True(SdkVersion.Parse(higher).CompareTo(SdkVersion.Parse(lower)) > 0);
+    }
+
+    [Theory]
     [InlineData("8.0.412")]
     [InlineData("10.0.100-preview.1.25120.13")]
     [InlineData("9.0.300-rc.1")]

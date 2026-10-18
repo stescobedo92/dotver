@@ -24,6 +24,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IStateService, StateService>();
         services.AddSingleton<IEnsureService, EnsureService>();
         services.AddSingleton<IExecService, ExecService>();
+        services.AddSingleton<IOutdatedService, OutdatedService>();
 
         return services;
     }

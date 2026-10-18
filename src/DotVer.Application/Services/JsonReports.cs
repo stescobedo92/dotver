@@ -158,6 +158,62 @@ public static class JsonReports
         });
     }
 
+    public static string ForOutdated(IReadOnlyList<OutdatedEntry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+
+        var items = new JsonArray();
+        foreach (var entry in entries)
+        {
+            items.Add(new JsonObject
+            {
+                ["version"] = entry.Installation.Version.Raw,
+                ["channel"] = entry.Channel,
+                ["latestInChannel"] = entry.LatestInChannel,
+                ["supportPhase"] = entry.SupportPhase,
+                ["releaseType"] = entry.ReleaseType,
+                ["updateAvailable"] = entry.UpdateAvailable,
+                ["isEndOfLife"] = entry.IsEndOfLife,
+                ["isPrerelease"] = entry.IsPrerelease,
+                ["isManaged"] = entry.Installation.IsManaged,
+                ["hostRoot"] = entry.Installation.HostRoot
+            });
+        }
+
+        return Root(new JsonObject { ["sdks"] = items });
+    }
+
+    public static string ForUpgrade(IReadOnlyList<UpgradeOutcome> outcomes)
+    {
+        ArgumentNullException.ThrowIfNull(outcomes);
+
+        var items = new JsonArray();
+        foreach (var outcome in outcomes)
+        {
+            var aliases = new JsonArray();
+            foreach (var alias in outcome.RepointedAliases)
+            {
+                aliases.Add(alias);
+            }
+
+            items.Add(new JsonObject
+            {
+                ["channel"] = outcome.Channel,
+                ["from"] = outcome.FromVersion,
+                ["to"] = outcome.ToVersion,
+                ["upgraded"] = outcome.Upgraded,
+                ["repointedCurrent"] = outcome.RepointedCurrent,
+                ["repointedDefault"] = outcome.RepointedDefault,
+                ["repointedAliases"] = aliases,
+                ["prunedOld"] = outcome.PrunedOld,
+                ["error"] = outcome.Error,
+                ["note"] = outcome.Note
+            });
+        }
+
+        return Root(new JsonObject { ["upgrades"] = items });
+    }
+
     private static string Root(JsonObject payload)
     {
         var root = new JsonObject { ["schemaVersion"] = SchemaVersion };

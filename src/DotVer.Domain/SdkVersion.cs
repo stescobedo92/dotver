@@ -58,7 +58,36 @@ public sealed record SdkVersion(string Raw, int Major, int Minor, int FeatureBan
             return -1;
         }
 
-        return string.Compare(Suffix, other.Suffix, StringComparison.OrdinalIgnoreCase);
+        return CompareSuffix(Suffix, other.Suffix);
+    }
+
+    // SemVer prerelease precedence: dot-separated identifiers, numeric ones
+    // compare numerically and sort before alphanumeric ones.
+    private static int CompareSuffix(string left, string right)
+    {
+        var leftParts = left.Split('.');
+        var rightParts = right.Split('.');
+        for (var i = 0; i < Math.Min(leftParts.Length, rightParts.Length); i++)
+        {
+            var a = leftParts[i];
+            var b = rightParts[i];
+            var aNumeric = long.TryParse(a, out var aValue);
+            var bNumeric = long.TryParse(b, out var bValue);
+            var comparison = (aNumeric, bNumeric) switch
+            {
+                (true, true) => aValue.CompareTo(bValue),
+                (true, false) => -1,
+                (false, true) => 1,
+                _ => string.Compare(a, b, StringComparison.OrdinalIgnoreCase)
+            };
+
+            if (comparison != 0)
+            {
+                return comparison;
+            }
+        }
+
+        return leftParts.Length.CompareTo(rightParts.Length);
     }
 
     public override string ToString() => Raw;

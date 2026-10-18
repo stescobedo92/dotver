@@ -8,13 +8,20 @@ public sealed class StateService : IStateService
     private readonly IVersionResolver _versionResolver;
     private readonly IInventoryService _inventoryService;
     private readonly DotVerPaths _paths;
+    private readonly IEnvironmentContext _environment;
 
-    public StateService(IConfigStore configStore, IVersionResolver versionResolver, IInventoryService inventoryService, DotVerPaths paths)
+    public StateService(
+        IConfigStore configStore,
+        IVersionResolver versionResolver,
+        IInventoryService inventoryService,
+        DotVerPaths paths,
+        IEnvironmentContext environment)
     {
         _configStore = configStore;
         _versionResolver = versionResolver;
         _inventoryService = inventoryService;
         _paths = paths;
+        _environment = environment;
     }
 
     public async Task<DotVerConfig> GetConfigAsync(CancellationToken cancellationToken) =>
@@ -112,7 +119,7 @@ public sealed class StateService : IStateService
         var removedDirectory = Directory.Exists(target.HostRoot);
         if (removedDirectory)
         {
-            Directory.Delete(target.HostRoot, recursive: true);
+            DeleteManagedInstallDirectory(target);
         }
 
         var remainingInventory = (await _inventoryService.ScanAsync(cancellationToken).ConfigureAwait(false))
@@ -142,5 +149,61 @@ public sealed class StateService : IStateService
         }
 
         return new UninstallOutcome(target.Version.Raw, removedDirectory, currentVersion, defaultVersion, removedAliases);
+    }
+
+    public async Task<RepointResult> RepointVersionAsync(string fromVersion, string toVersion, CancellationToken cancellationToken)
+    {
+        var config = await _configStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        var installations = await _inventoryService.ScanAsync(cancellationToken).ConfigureAwait(false);
+        var sdk = _versionResolver.FindByToken(toVersion, config, installations)
+            ?? throw new InvalidOperationException($"No selectable version found for '{toVersion}'.");
+
+        var repointedCurrent = string.Equals(config.CurrentVersion, fromVersion, StringComparison.OrdinalIgnoreCase);
+        var repointedDefault = string.Equals(config.DefaultVersion, fromVersion, StringComparison.OrdinalIgnoreCase);
+        var repointedAliases = config.Aliases
+            .Where(pair => string.Equals(pair.Value, fromVersion, StringComparison.OrdinalIgnoreCase))
+            .Select(static pair => pair.Key)
+            .ToList();
+
+        foreach (var alias in repointedAliases)
+        {
+            config.Aliases[alias] = sdk.Version.Raw;
+        }
+
+        config = config with
+        {
+            CurrentVersion = repointedCurrent ? sdk.Version.Raw : config.CurrentVersion,
+            DefaultVersion = repointedDefault ? sdk.Version.Raw : config.DefaultVersion
+        };
+
+        // One save for current+default+aliases: no torn state between mutations.
+        await _configStore.SaveAsync(config, cancellationToken).ConfigureAwait(false);
+        return new RepointResult(repointedCurrent, repointedDefault, repointedAliases);
+    }
+
+    private void DeleteManagedInstallDirectory(SdkInstallation target)
+    {
+        var comparison = _environment.IsWindows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var managedRoot = Path.GetFullPath(_paths.ManagedInstalls).TrimEnd(Path.DirectorySeparatorChar);
+        var hostRoot = Path.GetFullPath(target.HostRoot).TrimEnd(Path.DirectorySeparatorChar);
+        var parent = Path.GetDirectoryName(hostRoot);
+
+        // Recursive delete is only ever allowed on the exact managed layout:
+        // <ManagedInstalls>/<version>, a real directory (never a link/junction).
+        if (!string.Equals(parent, managedRoot, comparison) ||
+            !string.Equals(Path.GetFileName(hostRoot), target.Version.Raw, comparison))
+        {
+            throw new InvalidOperationException(
+                $"Refusing to delete '{hostRoot}': it is not a direct managed install under '{managedRoot}'.");
+        }
+
+        var info = new DirectoryInfo(hostRoot);
+        if (info.LinkTarget is not null || (info.Attributes & FileAttributes.ReparsePoint) != 0)
+        {
+            throw new InvalidOperationException(
+                $"Refusing to delete '{hostRoot}': it is a symbolic link or junction. Remove it manually if intended.");
+        }
+
+        Directory.Delete(hostRoot, recursive: true);
     }
 }

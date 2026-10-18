@@ -116,7 +116,7 @@ public sealed class EnsureServiceTests
             Inventory = new FakeInventoryService([.. initial]);
             InstallService = new FakeInstallService();
             ConfigStore = new InMemoryConfigStore(DotVerConfig.Empty);
-            var state = new StateService(ConfigStore, new VersionResolver(), Inventory, DotVerPaths.From(environment));
+            var state = new StateService(ConfigStore, new VersionResolver(), Inventory, DotVerPaths.From(environment), environment);
             Service = new EnsureService(new GlobalJsonService(), Inventory, InstallService, state, environment);
         }
 

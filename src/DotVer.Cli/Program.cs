@@ -114,6 +114,12 @@ app.Configure(config =>
     config.AddCommand<InstallCommand>("install")
         .WithDescription("Installs an isolated SDK using the official .NET install script.");
 
+    config.AddCommand<OutdatedCommand>("outdated")
+        .WithDescription("Shows SDKs with updates available, end-of-life channels and prereleases.");
+
+    config.AddCommand<UpgradeCommand>("upgrade")
+        .WithDescription("Upgrades managed SDKs to the latest release of their channel.");
+
     config.AddCommand<ListRemoteCommand>("list-remote")
         .WithAlias("ls-remote")
         .WithDescription("Queries official remote channels.");
