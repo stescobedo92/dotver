@@ -44,13 +44,15 @@ var isComplete = args.Length > 0 && string.Equals(args[0], "__complete", StringC
 var isCompletions = args.Length > 0 && string.Equals(args[0], "completions", StringComparison.OrdinalIgnoreCase);
 var isAudit = args.Length > 0 && string.Equals(args[0], "audit", StringComparison.OrdinalIgnoreCase);
 var isScan = args.Length > 0 && string.Equals(args[0], "scan", StringComparison.OrdinalIgnoreCase);
+var isShell = args.Length > 0 && string.Equals(args[0], "shell", StringComparison.OrdinalIgnoreCase);
+var isEnv = args.Length > 0 && string.Equals(args[0], "env", StringComparison.OrdinalIgnoreCase);
 // For exec, only an immediate `exec --help` is dotver help; later --help belongs to the child.
 var wantsHelp = isExec
     ? args.Length > 1 && (string.Equals(args[1], "--help", StringComparison.OrdinalIgnoreCase) || string.Equals(args[1], "-h", StringComparison.OrdinalIgnoreCase))
     : args.Contains("--help", StringComparer.OrdinalIgnoreCase) || args.Contains("-h", StringComparer.OrdinalIgnoreCase);
 
 // exec/which/completions resolve directly and must stay side-effect free for scripts.
-if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions && !isAudit && !isScan)
+if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions && !isAudit && !isScan && !isShell && !isEnv)
 {
     await bootstrap.EnsureConfiguredAsync(CancellationToken.None);
 }
@@ -171,6 +173,12 @@ app.Configure(config =>
 
     config.AddCommand<WhichCommand>("which")
         .WithDescription("Prints the dotnet path for a token, or for the active selection.");
+
+    config.AddCommand<ShellCommand>("shell")
+        .WithDescription("Opens an interactive shell pinned to one SDK (nothing persists after exit).");
+
+    config.AddCommand<EnvCommand>("env")
+        .WithDescription("Prints shell exports (DOTNET_ROOT, DOTVER_VERSION, PATH) for an SDK, or writes them with --github.");
 
     config.AddCommand<CompletionsCommand>("completions")
         .WithDescription("Prints the shell completion script for powershell, bash, zsh or fish.");
