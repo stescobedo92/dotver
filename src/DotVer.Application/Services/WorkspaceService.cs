@@ -14,15 +14,18 @@ public sealed class WorkspaceService : IWorkspaceService
     private readonly IGlobalJsonService _globalJsonService;
     private readonly IInventoryService _inventoryService;
     private readonly IInstallService _installService;
+    private readonly IEnvironmentContext? _environment;
 
     public WorkspaceService(
         IGlobalJsonService globalJsonService,
         IInventoryService inventoryService,
-        IInstallService installService)
+        IInstallService installService,
+        IEnvironmentContext? environment = null)
     {
         _globalJsonService = globalJsonService;
         _inventoryService = inventoryService;
         _installService = installService;
+        _environment = environment;
     }
 
     public async Task<WorkspaceScanResult> ScanAsync(string root, CancellationToken cancellationToken)
@@ -62,7 +65,7 @@ public sealed class WorkspaceService : IWorkspaceService
         {
             try
             {
-                var outcome = await _installService.InstallAsync(version, cancellationToken).ConfigureAwait(false);
+                var outcome = await _installService.InstallAsync(version, options: null, cancellationToken).ConfigureAwait(false);
                 installed.Add(outcome.Installation.Version.Raw);
             }
             catch (Exception exception) when (exception is InvalidOperationException or IOException or UnauthorizedAccessException)
@@ -100,7 +103,7 @@ public sealed class WorkspaceService : IWorkspaceService
                 continue;
             }
 
-            var matched = GlobalJsonMatcher.Match(request, inventory);
+            var matched = GlobalJsonMatcher.Match(request, inventory, _environment?.RuntimeArchitecture);
             entries.Add(new WorkspacePinEntry(
                 file,
                 request.Version.Raw,
@@ -200,3 +203,4 @@ public sealed class WorkspaceService : IWorkspaceService
     private static string Sanitize(string value) =>
         new(value.Where(static c => !char.IsControl(c)).ToArray());
 }
+

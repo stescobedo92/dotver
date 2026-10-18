@@ -30,6 +30,7 @@ internal sealed class PruneCommand : AsyncCommandBase<PruneSettings>
 
         var table = new Table().Border(TableBorder.Rounded);
         table.AddColumn("Version");
+        table.AddColumn("Arch");
         table.AddColumn("Channel");
         table.AddColumn("Size");
         table.AddColumn("Action");
@@ -40,6 +41,7 @@ internal sealed class PruneCommand : AsyncCommandBase<PruneSettings>
                 : $"{entry.Action} ({entry.Reason})";
             table.AddRow(
                 new Text(entry.Version),
+                new Text(entry.Architecture ?? "host"),
                 new Text(entry.Channel),
                 new Text(FormatBytes(entry.SizeBytes)),
                 new Text(action));

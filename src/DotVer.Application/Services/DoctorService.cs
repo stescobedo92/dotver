@@ -43,7 +43,7 @@ public sealed class DoctorService : IDoctorService
         var bootstrap = await _bootstrapService.EnsureConfiguredAsync(cancellationToken).ConfigureAwait(false);
         if (shimsWereMissing || bootstrap.PersistentPathUpdated || bootstrap.ProcessPathUpdated || bootstrap.ProfilesUpdated.Count > 0)
         {
-            fixes.Add($"Environment reconfigured (shims: {bootstrap.ShimsDirectory}).");
+            fixes.Add($"Environment reconfigured (shims: {TerminalText.Sanitize(bootstrap.ShimsDirectory)}).");
         }
 
         var inventory = await _inventoryService.ScanAsync(cancellationToken).ConfigureAwait(false);
@@ -106,19 +106,19 @@ public sealed class DoctorService : IDoctorService
 
         if (!string.IsNullOrWhiteSpace(config.CurrentVersion) && !versions.Contains(config.CurrentVersion))
         {
-            issues.Add(new DoctorIssue("current-missing", $"Persisted current version {config.CurrentVersion} is not installed."));
+            issues.Add(new DoctorIssue("current-missing", $"Persisted current version {TerminalText.Sanitize(config.CurrentVersion)} is not installed."));
         }
 
         if (!string.IsNullOrWhiteSpace(config.DefaultVersion) && !versions.Contains(config.DefaultVersion))
         {
-            issues.Add(new DoctorIssue("default-missing", $"Persisted default version {config.DefaultVersion} is not installed."));
+            issues.Add(new DoctorIssue("default-missing", $"Persisted default version {TerminalText.Sanitize(config.DefaultVersion)} is not installed."));
         }
 
         foreach (var alias in config.Aliases.OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase))
         {
             if (!versions.Contains(alias.Value))
             {
-                issues.Add(new DoctorIssue("alias-missing", $"Alias '{alias.Key}' points to {alias.Value}, which is not installed."));
+                issues.Add(new DoctorIssue("alias-missing", $"Alias '{TerminalText.Sanitize(alias.Key)}' points to {TerminalText.Sanitize(alias.Value)}, which is not installed."));
             }
         }
 
@@ -126,7 +126,7 @@ public sealed class DoctorService : IDoctorService
         {
             if (!Directory.Exists(root))
             {
-                issues.Add(new DoctorIssue("root-missing", $"Registered root '{root}' does not exist."));
+                issues.Add(new DoctorIssue("root-missing", $"Registered root '{TerminalText.Sanitize(root)}' does not exist."));
             }
         }
 
@@ -138,22 +138,25 @@ public sealed class DoctorService : IDoctorService
         foreach (var directory in EnumerateManagedDirectories())
         {
             var name = Path.GetFileName(directory);
+            // Mirror inventory parsing: the arch suffix is appended last.
+            var separator = name.LastIndexOf("--", StringComparison.Ordinal);
+            var versionPart = separator > 0 && SdkVersion.TryParse(name[..separator], out _) ? name[..separator] : name;
             var hostFile = Path.Combine(directory, _environment.IsWindows ? "dotnet.exe" : "dotnet");
-            var sdkDir = Path.Combine(directory, "sdk", name);
-            if (!SdkVersion.TryParse(name, out _) || !File.Exists(hostFile) || !Directory.Exists(sdkDir))
+            var sdkDir = Path.Combine(directory, "sdk", versionPart);
+            if (!SdkVersion.TryParse(versionPart, out _) || !File.Exists(hostFile) || !Directory.Exists(sdkDir))
             {
-                issues.Add(new DoctorIssue("incomplete-managed", $"Managed install directory '{name}' looks incomplete (missing host or sdk folder). Remove it manually if it is not an install in progress."));
+                issues.Add(new DoctorIssue("incomplete-managed", $"Managed install directory '{TerminalText.Sanitize(name)}' looks incomplete (missing host or sdk folder). Remove it manually if it is not an install in progress."));
             }
         }
 
         var shimFile = Path.Combine(_paths.Shims, _environment.IsWindows ? "dotnet.cmd" : "dotnet");
         if (!File.Exists(shimFile))
         {
-            issues.Add(new DoctorIssue("shims-missing", $"Shim file '{shimFile}' is missing; run 'dotver doctor --fix'."));
+            issues.Add(new DoctorIssue("shims-missing", $"Shim file '{TerminalText.Sanitize(shimFile)}' is missing; run 'dotver doctor --fix'."));
         }
 
         var pin = _globalJsonService.TryFind(_environment.CurrentDirectory);
-        if (pin is not null && GlobalJsonMatcher.Match(pin, inventory) is null)
+        if (pin is not null && GlobalJsonMatcher.Match(pin, inventory, _environment.RuntimeArchitecture) is null)
         {
             issues.Add(new DoctorIssue("globaljson-unsatisfied", $"global.json pins {pin.Version.Raw} but no installed SDK satisfies it; run 'dotver ensure'."));
         }
@@ -190,14 +193,14 @@ public sealed class DoctorService : IDoctorService
         var current = config.CurrentVersion;
         if (!string.IsNullOrWhiteSpace(current) && !versions.Contains(current))
         {
-            fixes.Add($"Cleared current ({current} is not installed).");
+            fixes.Add($"Cleared current ({TerminalText.Sanitize(current)} is not installed).");
             current = null;
         }
 
         var @default = config.DefaultVersion;
         if (!string.IsNullOrWhiteSpace(@default) && !versions.Contains(@default))
         {
-            fixes.Add($"Cleared default ({@default} is not installed).");
+            fixes.Add($"Cleared default ({TerminalText.Sanitize(@default)} is not installed).");
             @default = null;
         }
 
@@ -210,7 +213,7 @@ public sealed class DoctorService : IDoctorService
             }
             else
             {
-                fixes.Add($"Removed alias '{pair.Key}' (points to missing {pair.Value}).");
+                fixes.Add($"Removed alias '{TerminalText.Sanitize(pair.Key)}' (points to missing {TerminalText.Sanitize(pair.Value)}).");
             }
         }
 

@@ -10,21 +10,45 @@ internal sealed class InstallCommand : AsyncCommandBase<InstallSettings>
     private readonly IInstallService _installService;
     private readonly IStateService _stateService;
     private readonly IEnvironmentBootstrapService _bootstrapService;
+    private readonly IEnvironmentContext _environment;
 
     public InstallCommand(
         IAnsiConsole console,
         IInstallService installService,
         IStateService stateService,
-        IEnvironmentBootstrapService bootstrapService)
+        IEnvironmentBootstrapService bootstrapService,
+        IEnvironmentContext environment)
         : base(console)
     {
         _installService = installService;
         _stateService = stateService;
         _bootstrapService = bootstrapService;
+        _environment = environment;
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, InstallSettings settings)
     {
+        if (!string.IsNullOrWhiteSpace(settings.Runtime))
+        {
+            if (settings.NoUse || settings.NoDefault)
+            {
+                throw new InvalidOperationException("--no-use/--no-default do not apply to runtime installs; runtimes never change selection.");
+            }
+
+            var runtimeOutcome = await _installService.InstallRuntimeAsync(
+                settings.VersionOrChannel, settings.Runtime, settings.Architecture, CancellationToken.None).ConfigureAwait(false);
+            var runtimeSummary = new Table().Border(TableBorder.Rounded);
+            runtimeSummary.AddColumn("Step");
+            runtimeSummary.AddColumn("Value");
+            runtimeSummary.AddRow(new Text("Runtime"), new Text(runtimeOutcome.Runtime));
+            runtimeSummary.AddRow(new Text("Requested"), new Text(TerminalText.Sanitize(settings.VersionOrChannel)));
+            runtimeSummary.AddRow(new Text("Status"), new Text(runtimeOutcome.WasAlreadyInstalled ? "Already installed" : "Installed"));
+            runtimeSummary.AddRow(new Text("Installed versions"), new Text(string.Join(", ", runtimeOutcome.InstalledVersions)));
+            runtimeSummary.AddRow(new Text("Managed root"), new Text(TerminalText.Sanitize(runtimeOutcome.HostRoot)));
+            Console.Write(runtimeSummary);
+            return 0;
+        }
+
         InstallPlan? plan = null;
         InstallOutcome? outcome = null;
         EnvironmentBootstrapResult? bootstrap = null;
@@ -39,10 +63,18 @@ internal sealed class InstallCommand : AsyncCommandBase<InstallSettings>
                 resolveTask.Value = 100;
 
                 var installTask = ctx.AddTask($"[green]Installing {Markup.Escape(plan.ResolvedVersion)}[/]");
-                outcome = await _installService.InstallAsync(settings.VersionOrChannel, CancellationToken.None).ConfigureAwait(false);
+                outcome = await _installService.InstallAsync(
+                    settings.VersionOrChannel, new InstallOptions(settings.Architecture), CancellationToken.None).ConfigureAwait(false);
                 installTask.Value = 100;
 
-                if (!settings.NoUse || !settings.NoDefault)
+                // A foreign-architecture SDK is never auto-selected: the host
+                // may not be able to run it without emulation.
+                var foreignArchitecture = !Architectures.MatchesHost(outcome.Installation.Architecture, _environment.RuntimeArchitecture);
+                if (foreignArchitecture)
+                {
+                    selected = outcome.Installation;
+                }
+                else if (!settings.NoUse || !settings.NoDefault)
                 {
                     var stateTask = ctx.AddTask("[green]Applying automatic current/default[/]");
                     var version = outcome.Installation.Version.Raw;
@@ -76,10 +108,10 @@ internal sealed class InstallCommand : AsyncCommandBase<InstallSettings>
         summary.AddRow(new Text("Reason"), new Text(plan.Reason));
         summary.AddRow(new Text("Status"), new Text(outcome!.WasAlreadyInstalled ? "Already installed" : "Installed"));
         summary.AddRow(new Text("Installed SDK"), new Text(selected!.Version.Raw));
-        summary.AddRow(new Text("Current"), new Text(effectiveConfig.CurrentVersion ?? "(unset)"));
-        summary.AddRow(new Text("Default"), new Text(effectiveConfig.DefaultVersion ?? "(unset)"));
-        summary.AddRow(new Text("Managed root"), new Text(outcome.Installation.HostRoot));
-        summary.AddRow(new Text("Shims"), new Text(bootstrap!.ShimsDirectory));
+        summary.AddRow(new Text("Current"), new Text(TerminalText.Sanitize(effectiveConfig.CurrentVersion) is { Length: > 0 } current ? current : "(unset)"));
+        summary.AddRow(new Text("Default"), new Text(TerminalText.Sanitize(effectiveConfig.DefaultVersion) is { Length: > 0 } @default ? @default : "(unset)"));
+        summary.AddRow(new Text("Managed root"), new Text(TerminalText.Sanitize(outcome.Installation.HostRoot)));
+        summary.AddRow(new Text("Shims"), new Text(TerminalText.Sanitize(bootstrap!.ShimsDirectory)));
         summary.AddRow("Persistent PATH", bootstrap.PersistentPathUpdated ? "updated" : "already configured");
         summary.AddRow("Process PATH", bootstrap.ProcessPathUpdated ? "updated" : "already configured");
         Console.Write(summary);

@@ -12,4 +12,10 @@ internal sealed class InstallSettings : CommandSettings
 
     [CommandOption("--no-default")]
     public bool NoDefault { get; init; }
+
+    [CommandOption("--arch <ARCH>")]
+    public string? Architecture { get; init; }
+
+    [CommandOption("--runtime <RUNTIME>")]
+    public string? Runtime { get; init; }
 }

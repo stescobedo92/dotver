@@ -9,4 +9,5 @@ public sealed record SdkInstallation(
     string OriginHint,
     bool IsManaged,
     bool CanBeUsedDirectly,
-    string DiscoverySource);
+    string DiscoverySource,
+    string? Architecture = null);

@@ -89,6 +89,33 @@ public sealed class DoctorPruneServiceTests
     }
 
     [Fact]
+    public async Task Fix_SanitizesControlCharactersFromConfig()
+    {
+        using var sandbox = new TestSandbox(TestPlatform.Windows);
+        sandbox.CreateSdkInstall("8.0.412", isManaged: true);
+        var environment = sandbox.CreateEnvironment();
+        var paths = DotVerPaths.From(environment);
+        Directory.CreateDirectory(paths.Shims);
+        File.WriteAllText(Path.Combine(paths.Shims, "dotnet.cmd"), string.Empty);
+
+        var configStore = new InMemoryConfigStore(new DotVerConfig(
+            "6.0.999[31mEVIL",
+            "8.0.412",
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["gone[31m"] = "6.0.999"
+            },
+            []));
+        var inventory = new InventoryService(paths, environment, configStore);
+        var doctor = new DoctorService(inventory, configStore, new GlobalJsonService(), new FakeBootstrap(paths), paths, environment);
+
+        var result = await doctor.FixAsync(CancellationToken.None);
+
+        Assert.NotEmpty(result.FixesApplied);
+        Assert.All(result.FixesApplied, fix => Assert.DoesNotContain((char)27, fix));
+    }
+
+    [Fact]
     public async Task Prune_ProtectsSdkMatchedByRollForwardPin()
     {
         using var sandbox = new TestSandbox(TestPlatform.Windows);
@@ -187,3 +214,4 @@ public sealed class DoctorPruneServiceTests
         }
     }
 }
+

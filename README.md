@@ -7,7 +7,7 @@
 - Interactive TUI/CLI with `Spectre.Console`.
 - Cross-platform: Windows, Linux, and macOS.
 - Detection of installed SDKs via official root, `DOTNET_ROOT`, `PATH`, and manually registered roots.
-- Isolated installations in `~/.dotver/installs/<version>` using the official `dotnet-install` script.
+- Isolated installations in `~/.dotver/installs/<version>` using the official `dotnet-install` script. Cross-architecture installs live in `installs/<version>--<arch>` and are never auto-selected; runtime-only installs live in `~/.dotver/runtimes/`.
 - Per-project SDK pins in `global.json` (`dotver local`), with one-command onboarding on any machine (`dotver ensure`).
 - Shims to intercept `dotnet --info`, `dotnet --list-sdks`, and `dotnet --version`, plus one-off runs with a specific SDK (`dotver exec`) that do not change your global selection.
 - Maintenance built in: update/EOL reporting (`outdated`/`upgrade`), health checks with repairs (`doctor --fix`), and disk cleanup (`prune`).
@@ -33,6 +33,9 @@ dotver alias lts 8.0.412     # reserved names (system/current/default/latest) ar
 dotver install 10.0.201 [--no-use] [--no-default]
 dotver install 8.0
 dotver install lts
+dotver install 8.0.412 --arch arm64        # cross-arch: installs/<version>--<arch>
+dotver install 8.0 --runtime aspnetcore    # runtime-only under ~/.dotver/runtimes
+dotver info [8.0] [--json]                 # runtimes, workloads, architecture
 dotver list-remote [--json]
 dotver outdated [--all] [--managed-only] [--json]
 dotver upgrade 8.0.400 [--prune-old]

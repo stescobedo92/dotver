@@ -5,12 +5,26 @@ namespace DotVer.Application;
 /// <summary>Applies global.json roll-forward rules against a local inventory.</summary>
 public static class GlobalJsonMatcher
 {
-    public static SdkInstallation? Match(GlobalJsonRequest request, IReadOnlyList<SdkInstallation> installations)
+    public static SdkInstallation? Match(
+        GlobalJsonRequest request,
+        IReadOnlyList<SdkInstallation> installations,
+        string? hostArchitecture = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(installations);
 
-        var ordered = installations.OrderByDescending(static sdk => sdk.Version).ToList();
+        // Automatic pin matching must never select a foreign-architecture
+        // install: callers pass the host architecture and the pool is
+        // restricted to host-matching SDKs. This includes prune's pin
+        // protection: an arch-blind pool can resolve the pin to a different
+        // (foreign, higher) version and leave the host build the pin actually
+        // resolves to unprotected. Only omit hostArchitecture when the caller
+        // genuinely wants any-architecture semantics.
+        var pool = hostArchitecture is null
+            ? installations
+            : installations.Where(sdk => Architectures.MatchesHost(sdk.Architecture, hostArchitecture)).ToList();
+
+        var ordered = pool.OrderByDescending(static sdk => sdk.Version).ToList();
         var exact = ordered.FirstOrDefault(sdk => sdk.Version.CompareTo(request.Version) == 0);
         if (request.RollForward is SdkRollForward.Default or SdkRollForward.Disable)
         {

@@ -31,7 +31,11 @@ internal sealed class ListRemoteCommand : AsyncCommandBase<ListRemoteSettings>
         table.AddColumn("Type");
         foreach (var channel in channels)
         {
-            table.AddRow(channel.Channel, channel.LatestSdkVersion, channel.SupportPhase, channel.ReleaseType);
+            table.AddRow(
+                new Text(channel.Channel),
+                new Text(channel.LatestSdkVersion),
+                new Text(channel.SupportPhase),
+                new Text(channel.ReleaseType));
         }
 
         Console.Write(table);

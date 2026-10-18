@@ -242,6 +242,9 @@ app.Configure(config =>
     config.AddCommand<EachCommand>("each")
         .WithDescription("Runs a command across several SDKs: dotver each 8.0,9.0 --parallel --json -- dotnet test");
 
+    config.AddCommand<InfoCommand>("info")
+        .WithDescription("Show runtimes, workloads and architecture of an installed SDK.");
+
     config.AddCommand<WhichCommand>("which")
         .WithDescription("Prints the dotnet path for a token, or for the active selection.");
 

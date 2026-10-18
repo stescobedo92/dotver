@@ -29,6 +29,7 @@ public static class JsonReports
                 ["isCurrent"] = string.Equals(selection.Installation?.Version.Raw, sdk.Version.Raw, StringComparison.OrdinalIgnoreCase),
                 ["isDefault"] = string.Equals(config.DefaultVersion, sdk.Version.Raw, StringComparison.OrdinalIgnoreCase),
                 ["isManaged"] = sdk.IsManaged,
+                ["architecture"] = sdk.Architecture,
                 ["canBeUsedDirectly"] = sdk.CanBeUsedDirectly,
                 ["origin"] = sdk.Origin.ToString(),
                 ["discoverySource"] = sdk.DiscoverySource,
@@ -152,6 +153,7 @@ public static class JsonReports
             items.Add(new JsonObject
             {
                 ["version"] = entry.Version,
+                ["architecture"] = entry.Architecture,
                 ["channel"] = entry.Channel,
                 ["sizeBytes"] = entry.SizeBytes,
                 ["hostRoot"] = entry.HostRoot,
@@ -368,6 +370,44 @@ public static class JsonReports
         {
             ["allSucceeded"] = result.AllSucceeded,
             ["entries"] = items
+        });
+    }
+
+    public static string ForInfo(SdkInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+
+        var runtimes = new JsonArray();
+        foreach (var runtime in info.Runtimes)
+        {
+            var versions = new JsonArray();
+            foreach (var version in runtime.Versions)
+            {
+                versions.Add(version);
+            }
+
+            runtimes.Add(new JsonObject
+            {
+                ["kind"] = runtime.Kind,
+                ["versions"] = versions
+            });
+        }
+
+        var workloads = new JsonArray();
+        foreach (var workload in info.Workloads)
+        {
+            workloads.Add(workload);
+        }
+
+        return Root(new JsonObject
+        {
+            ["version"] = info.Installation.Version.Raw,
+            ["architecture"] = info.Installation.Architecture,
+            ["hostRoot"] = info.Installation.HostRoot,
+            ["dotnetPath"] = info.Installation.DotnetPath,
+            ["isManaged"] = info.Installation.IsManaged,
+            ["runtimes"] = runtimes,
+            ["workloads"] = workloads
         });
     }
 

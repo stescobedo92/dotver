@@ -141,7 +141,7 @@ public sealed class EnsureServiceTests
         public List<string> Calls { get; } = [];
         public Func<string, SdkInstallation>? OnInstall { get; set; }
 
-        public Task<InstallOutcome> InstallAsync(string versionOrChannel, CancellationToken cancellationToken)
+        public Task<InstallOutcome> InstallAsync(string versionOrChannel, InstallOptions? options, CancellationToken cancellationToken)
         {
             Calls.Add(versionOrChannel);
             var sdk = OnInstall?.Invoke(versionOrChannel)
@@ -150,6 +150,9 @@ public sealed class EnsureServiceTests
             return Task.FromResult(new InstallOutcome(plan, sdk, WasAlreadyInstalled: false));
         }
 
+        public Task<RuntimeInstallOutcome> InstallRuntimeAsync(string versionOrChannel, string runtime, string? architecture, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
         public Task<InstallPlan> ResolveInstallPlanAsync(string token, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
@@ -157,4 +160,5 @@ public sealed class EnsureServiceTests
             throw new NotSupportedException();
     }
 }
+
 

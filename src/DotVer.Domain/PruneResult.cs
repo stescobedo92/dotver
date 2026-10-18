@@ -6,7 +6,8 @@ public sealed record PruneEntry(
     long SizeBytes,
     string HostRoot,
     PruneAction Action,
-    string? Reason);
+    string? Reason,
+    string? Architecture = null);
 
 public sealed record PruneResult(
     IReadOnlyList<PruneEntry> Entries,

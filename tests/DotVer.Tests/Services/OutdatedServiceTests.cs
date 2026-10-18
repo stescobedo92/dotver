@@ -66,6 +66,34 @@ public sealed class OutdatedServiceTests
     }
 
     [Fact]
+    public async Task Upgrade_NeverTargetsForeignArchitectureBuilds()
+    {
+        using var sandbox = new TestSandbox(TestPlatform.Linux);
+        var native = sandbox.CreateSdkInstall("8.0.400", isManaged: true);
+        var foreignRoot = Path.Combine(sandbox.Root, ".dotver", "installs", "8.0.400--arm64");
+        Directory.CreateDirectory(Path.Combine(foreignRoot, "sdk", "8.0.400"));
+        File.WriteAllText(Path.Combine(foreignRoot, "dotnet"), string.Empty);
+
+        var harness = new Harness(sandbox, [new ReleaseChannel("8.0", "8.0.412", "active", "lts")], DotVerConfig.Empty);
+        harness.Install.OnInstall = version => sandbox.CreateSdkInstall(version, isManaged: true);
+
+        var outcomes = await harness.Service.UpgradeAsync("8.0.400", all: false, pruneOld: true, CancellationToken.None);
+
+        // Exactly one target (the native build): the arm64 build is untouched.
+        var outcome = Assert.Single(outcomes);
+        Assert.True(outcome.Upgraded);
+        Assert.True(outcome.PrunedOld);
+        Assert.False(Directory.Exists(native.HostRoot));
+        Assert.True(Directory.Exists(foreignRoot));
+        Assert.Single(harness.Install.Calls);
+
+        // --all with only a foreign build left at 8.0.400 must not convert it.
+        var allOutcomes = await harness.Service.UpgradeAsync(null, all: true, pruneOld: true, CancellationToken.None);
+        Assert.DoesNotContain(allOutcomes, o => o.FromVersion == "8.0.400" && o.Upgraded);
+        Assert.True(Directory.Exists(foreignRoot));
+    }
+
+    [Fact]
     public async Task Upgrade_WhenAlreadyLatest_DoesNotInstall()
     {
         using var sandbox = new TestSandbox(TestPlatform.Windows);
@@ -178,7 +206,7 @@ public sealed class OutdatedServiceTests
         public Task<IReadOnlyList<ReleaseChannel>> ListRemoteAsync(CancellationToken cancellationToken) =>
             Task.FromResult(channels);
 
-        public Task<InstallOutcome> InstallAsync(string versionOrChannel, CancellationToken cancellationToken)
+        public Task<InstallOutcome> InstallAsync(string versionOrChannel, InstallOptions? options, CancellationToken cancellationToken)
         {
             Calls.Add(versionOrChannel);
             var sdk = OnInstall?.Invoke(versionOrChannel)
@@ -189,7 +217,11 @@ public sealed class OutdatedServiceTests
                 WasAlreadyInstalled: false));
         }
 
+        public Task<RuntimeInstallOutcome> InstallRuntimeAsync(string versionOrChannel, string runtime, string? architecture, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
         public Task<InstallPlan> ResolveInstallPlanAsync(string token, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
     }
 }
+

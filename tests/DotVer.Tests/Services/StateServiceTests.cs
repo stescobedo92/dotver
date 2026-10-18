@@ -33,6 +33,30 @@ public sealed class StateServiceTests
     }
 
     [Fact]
+    public async Task UninstallManaged_FallbackNeverLandsOnForeignArchitecture()
+    {
+        using var sandbox = new TestSandbox(TestPlatform.Linux);
+        sandbox.CreateSdkInstall("8.0.412", isManaged: true);
+        var foreignRoot = Path.Combine(sandbox.Root, ".dotver", "installs", "9.0.100--arm64");
+        Directory.CreateDirectory(Path.Combine(foreignRoot, "sdk", "9.0.100"));
+        File.WriteAllText(Path.Combine(foreignRoot, "dotnet"), string.Empty);
+
+        var configStore = new InMemoryConfigStore(new DotVerConfig(
+            "8.0.412",
+            "8.0.412",
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            []));
+        var environment = sandbox.CreateEnvironment();
+        var inventory = new InventoryService(DotVerPaths.From(environment), environment, configStore);
+        var stateService = new StateService(configStore, new VersionResolver(), inventory, DotVerPaths.From(environment), environment);
+
+        var outcome = await stateService.UninstallManagedAsync("8.0.412", CancellationToken.None);
+
+        Assert.Null(outcome.NewCurrentVersion);
+        Assert.Null(outcome.NewDefaultVersion);
+    }
+
+    [Fact]
     public async Task UninstallManaged_OutsideManagedRoot_RefusesRecursiveDelete()
     {
         using var sandbox = new TestSandbox(TestPlatform.Windows);

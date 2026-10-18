@@ -39,18 +39,18 @@ public sealed class EnsureService : IEnsureService
                 $"No global.json pin found at or above '{startDirectory}'. Create one with 'dotver local <version>'.");
 
         var inventory = await _inventoryService.ScanAsync(cancellationToken).ConfigureAwait(false);
-        var matched = GlobalJsonMatcher.Match(request, inventory);
+        var matched = GlobalJsonMatcher.Match(request, inventory, _environment.RuntimeArchitecture);
         var installedNow = false;
 
         if (matched is null)
         {
             // request.Version was validated by SdkVersion.TryParse inside TryFind,
             // and InstallService passes it as a single process argument (no shell).
-            await _installService.InstallAsync(request.Version.Raw, cancellationToken).ConfigureAwait(false);
+            await _installService.InstallAsync(request.Version.Raw, options: null, cancellationToken).ConfigureAwait(false);
             installedNow = true;
 
             inventory = await _inventoryService.ScanAsync(cancellationToken).ConfigureAwait(false);
-            matched = GlobalJsonMatcher.Match(request, inventory)
+            matched = GlobalJsonMatcher.Match(request, inventory, _environment.RuntimeArchitecture)
                 ?? throw new InvalidOperationException(
                     $"Installed {request.Version.Raw} but it still does not satisfy global.json (rollForward: {request.RollForward}).");
         }
@@ -63,3 +63,4 @@ public sealed class EnsureService : IEnsureService
         return new EnsureOutcome(request, matched, installedNow);
     }
 }
+

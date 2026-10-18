@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using DotVer.Application;
 
 namespace DotVer.Infrastructure;
@@ -44,6 +45,19 @@ public sealed class SystemEnvironmentContext : IEnvironmentContext
     public bool IsLinux => OperatingSystem.IsLinux();
 
     public bool IsMacOS => OperatingSystem.IsMacOS();
+
+    public string RuntimeArchitecture => RuntimeInformation.ProcessArchitecture switch
+    {
+        Architecture.X64 => "x64",
+        Architecture.X86 => "x86",
+        Architecture.Arm64 => "arm64",
+        Architecture.Arm => "arm",
+        Architecture.S390x => "s390x",
+        Architecture.Ppc64le => "ppc64le",
+        Architecture.LoongArch64 => "loongarch64",
+        Architecture.RiscV64 => "riscv64",
+        _ => RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant()
+    };
 
     public IReadOnlyList<string> GetPathEntries()
     {

@@ -99,6 +99,7 @@ public sealed class InventoryService : IInventoryService
                 .ToList();
 
             var directlySelectable = entry.Value.IsManaged || versions.Count == 1;
+            var architecture = entry.Value.IsManaged ? ParseManagedArchitecture(hostRoot) : null;
             rawInstallations.AddRange(
                 versions.Select(version => new SdkInstallation(
                     version,
@@ -109,14 +110,44 @@ public sealed class InventoryService : IInventoryService
                     BuildOriginHint(entry.Value.Origin, hostRoot, entry.Value.Source),
                     entry.Value.IsManaged,
                     directlySelectable,
-                    entry.Value.Source)));
+                    entry.Value.Source,
+                    architecture)));
         }
 
         return rawInstallations
             .GroupBy(static sdk => $"{sdk.Version.Raw}|{sdk.SdkRoot}", comparer)
             .Select(static group => group.First())
             .OrderByDescending(static sdk => sdk.Version)
+            .ThenByDescending(static sdk => sdk.IsManaged)
+            .ThenBy(sdk => Architectures.MatchesHost(sdk.Architecture, _environment.RuntimeArchitecture) ? 0 : 1)
             .ToList();
+    }
+
+    private static string? ParseManagedArchitecture(string hostRoot)
+    {
+        var name = Path.GetFileName(hostRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+
+        // The architecture suffix is always appended LAST ("<version>--<arch>"),
+        // while the version itself may contain "--" in its prerelease label.
+        var separator = name.LastIndexOf("--", StringComparison.Ordinal);
+        if (separator < 0)
+        {
+            return null;
+        }
+
+        var candidate = name[(separator + 2)..];
+
+        // A present-but-unknown suffix must NOT read as native ("unknown" never
+        // matches the host), otherwise a foreign-arch install could be
+        // auto-selected or satisfy a native install request. The version part
+        // must parse too, or "--" belongs to the version label itself.
+        var versionPart = name[..separator];
+        if (!SdkVersion.TryParse(versionPart, out _))
+        {
+            return null;
+        }
+
+        return Architectures.IsKnown(candidate) ? candidate.ToLowerInvariant() : "unknown";
     }
 
     public string? GetSystemDotnetPath()

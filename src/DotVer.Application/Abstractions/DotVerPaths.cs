@@ -9,6 +9,7 @@ public sealed record DotVerPaths(
     string Scripts,
     string Env)
 {
+    public string ManagedRuntimes => Path.Combine(Home, "runtimes");
     public static DotVerPaths From(IEnvironmentContext environment)
     {
         var home = environment.GetEnvironmentVariable("DOTVER_HOME");

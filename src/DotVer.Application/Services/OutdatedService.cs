@@ -92,10 +92,16 @@ public sealed class OutdatedService : IOutdatedService
             .Where(static entry => entry.Installation.IsManaged)
             .ToList();
 
+        // Upgrade installs the host build and repoints by version, so it only
+        // ever targets host-architecture builds. A foreign build is never
+        // silently converted to (or pruned as) a host build.
         List<OutdatedEntry> targets;
         if (all)
         {
-            targets = entries.Where(static entry => entry.UpdateAvailable).ToList();
+            targets = entries
+                .Where(entry => entry.UpdateAvailable &&
+                                Architectures.MatchesHost(entry.Installation.Architecture, _environment.RuntimeArchitecture))
+                .ToList();
         }
         else
         {
@@ -103,8 +109,17 @@ public sealed class OutdatedService : IOutdatedService
             var inventory = entries.Select(static entry => entry.Installation).ToList();
             var resolved = _versionResolver.FindByToken(token!, config, inventory)
                 ?? throw new InvalidOperationException($"No managed SDK found for '{token}'. Only dotver-managed SDKs can be upgraded.");
+            if (!Architectures.MatchesHost(resolved.Architecture, _environment.RuntimeArchitecture))
+            {
+                throw new InvalidOperationException(
+                    $"SDK {resolved.Version.Raw} is installed for architecture '{resolved.Architecture}', not the host ('{_environment.RuntimeArchitecture}'). Cross-architecture builds are not upgraded automatically; reinstall with 'dotver install <version> --arch {resolved.Architecture}'.");
+            }
+
+            // Identify the target by installation identity, not by version
+            // string: the same version may exist for several architectures.
+            var comparison = _environment.IsWindows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
             targets = entries
-                .Where(entry => string.Equals(entry.Installation.Version.Raw, resolved.Version.Raw, StringComparison.OrdinalIgnoreCase))
+                .Where(entry => string.Equals(entry.Installation.HostRoot, resolved.HostRoot, comparison))
                 .ToList();
         }
 
@@ -143,7 +158,7 @@ public sealed class OutdatedService : IOutdatedService
         }
 
         var to = target.LatestInChannel;
-        var installOutcome = await _installService.InstallAsync(to, cancellationToken).ConfigureAwait(false);
+        var installOutcome = await _installService.InstallAsync(to, options: null, cancellationToken).ConfigureAwait(false);
         if (!string.Equals(installOutcome.Installation.Version.Raw, to, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(
@@ -163,7 +178,7 @@ public sealed class OutdatedService : IOutdatedService
             }
             else
             {
-                await _stateService.UninstallManagedAsync(from, cancellationToken).ConfigureAwait(false);
+                await _stateService.UninstallManagedAsync(target.Installation, cancellationToken).ConfigureAwait(false);
                 pruned = true;
             }
         }
@@ -184,3 +199,4 @@ public sealed class OutdatedService : IOutdatedService
     private static string Sanitize(string value) =>
         new(value.Where(static c => !char.IsControl(c)).ToArray());
 }
+

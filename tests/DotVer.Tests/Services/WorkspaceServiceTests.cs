@@ -144,7 +144,7 @@ public sealed class WorkspaceServiceTests
         public List<string> Calls { get; } = [];
         public Func<string, SdkInstallation>? OnInstall { get; set; }
 
-        public Task<InstallOutcome> InstallAsync(string versionOrChannel, CancellationToken cancellationToken)
+        public Task<InstallOutcome> InstallAsync(string versionOrChannel, InstallOptions? options, CancellationToken cancellationToken)
         {
             Calls.Add(versionOrChannel);
             var sdk = OnInstall?.Invoke(versionOrChannel)
@@ -153,6 +153,9 @@ public sealed class WorkspaceServiceTests
                 new InstallPlan(versionOrChannel, sdk.Version.Raw, "test", null), sdk, WasAlreadyInstalled: false));
         }
 
+        public Task<RuntimeInstallOutcome> InstallRuntimeAsync(string versionOrChannel, string runtime, string? architecture, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
         public Task<InstallPlan> ResolveInstallPlanAsync(string token, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
@@ -160,3 +163,4 @@ public sealed class WorkspaceServiceTests
             throw new NotSupportedException();
     }
 }
+

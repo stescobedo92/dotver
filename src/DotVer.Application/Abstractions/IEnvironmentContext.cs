@@ -10,6 +10,7 @@ public interface IEnvironmentContext
     bool IsWindows { get; }
     bool IsLinux { get; }
     bool IsMacOS { get; }
+    string RuntimeArchitecture { get; }
     IReadOnlyList<string> GetPathEntries();
     string? GetEnvironmentVariable(string name);
     string? GetUserEnvironmentVariable(string name);

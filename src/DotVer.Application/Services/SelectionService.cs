@@ -36,8 +36,13 @@ public sealed class SelectionService : ISelectionService
         var overrideToken = _environment.GetEnvironmentVariable("DOTVER_VERSION");
         if (!string.IsNullOrWhiteSpace(overrideToken))
         {
+            // Explicit host preference: do not depend on inventory ordering to
+            // avoid a foreign managed build winning over the native one.
             var overridden = SdkVersion.TryParse(overrideToken.Trim(), out _)
-                ? installations.FirstOrDefault(sdk => string.Equals(sdk.Version.Raw, overrideToken.Trim(), StringComparison.OrdinalIgnoreCase))
+                ? installations
+                    .Where(sdk => string.Equals(sdk.Version.Raw, overrideToken.Trim(), StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(sdk => Architectures.MatchesHost(sdk.Architecture, _environment.RuntimeArchitecture) ? 0 : 1)
+                    .FirstOrDefault()
                 : null;
 
             return overridden is not null
@@ -51,17 +56,20 @@ public sealed class SelectionService : ISelectionService
         var globalJson = _globalJsonService.TryFind(_environment.CurrentDirectory);
         if (globalJson is not null)
         {
-            var pinned = GlobalJsonMatcher.Match(globalJson, installations);
+            var pinned = GlobalJsonMatcher.Match(globalJson, installations, _environment.RuntimeArchitecture);
             if (pinned is not null)
             {
                 return new SdkSelection(pinned, $"Selected by global.json ({globalJson.Version.Raw})", true);
             }
         }
 
+        // Persisted current/default are automatic selection: a foreign-arch
+        // install left behind after the native one was removed must not be
+        // silently adopted by the shim.
         if (!string.IsNullOrWhiteSpace(config.CurrentVersion))
         {
             var current = _versionResolver.FindByToken(config.CurrentVersion, config, installations);
-            if (current is not null)
+            if (current is not null && Architectures.MatchesHost(current.Architecture, _environment.RuntimeArchitecture))
             {
                 return new SdkSelection(current, $"Selected by persisted 'use' ({config.CurrentVersion})", false);
             }
@@ -70,7 +78,7 @@ public sealed class SelectionService : ISelectionService
         if (!string.IsNullOrWhiteSpace(config.DefaultVersion))
         {
             var fallback = _versionResolver.FindByToken(config.DefaultVersion, config, installations);
-            if (fallback is not null)
+            if (fallback is not null && Architectures.MatchesHost(fallback.Architecture, _environment.RuntimeArchitecture))
             {
                 return new SdkSelection(fallback, $"Selected by default ({config.DefaultVersion})", false);
             }

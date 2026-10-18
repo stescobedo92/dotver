@@ -114,6 +114,32 @@ public sealed class StateService : IStateService
             throw new InvalidOperationException($"Only dotver-managed SDKs can be uninstalled. Token received: '{token}'.");
         }
 
+        return await UninstallManagedCoreAsync(target, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<UninstallOutcome> UninstallManagedAsync(SdkInstallation target, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        if (!target.IsManaged)
+        {
+            throw new InvalidOperationException($"Only dotver-managed SDKs can be uninstalled. Version received: '{target.Version.Raw}'.");
+        }
+
+        // Re-resolve by identity (host root) against a fresh scan so a stale
+        // snapshot can never delete a different build of the same version.
+        var inventory = await _inventoryService.ScanAsync(cancellationToken).ConfigureAwait(false);
+        var comparison = _environment.IsWindows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var current = inventory.FirstOrDefault(sdk =>
+            sdk.IsManaged && string.Equals(sdk.HostRoot, target.HostRoot, comparison))
+            ?? throw new InvalidOperationException($"SDK {target.Version.Raw} is no longer installed.");
+
+        return await UninstallManagedCoreAsync(current, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<UninstallOutcome> UninstallManagedCoreAsync(SdkInstallation target, CancellationToken cancellationToken)
+    {
+        var config = await _configStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+
         var removedAliases = config.Aliases
             .Where(pair => string.Equals(pair.Value, target.Version.Raw, StringComparison.OrdinalIgnoreCase))
             .Select(static pair => pair.Key)
@@ -130,8 +156,10 @@ public sealed class StateService : IStateService
             DeleteManagedInstallDirectory(target);
         }
 
+        // The automatic fallback must never land on a foreign-architecture
+        // install (same rule as install auto-selection).
         var remainingInventory = (await _inventoryService.ScanAsync(cancellationToken).ConfigureAwait(false))
-            .Where(static sdk => sdk.IsManaged)
+            .Where(sdk => sdk.IsManaged && Architectures.MatchesHost(sdk.Architecture, _environment.RuntimeArchitecture))
             .OrderByDescending(static sdk => sdk.Version)
             .ToList();
 
@@ -221,19 +249,24 @@ public sealed class StateService : IStateService
         var parent = Path.GetDirectoryName(hostRoot);
 
         // Recursive delete is only ever allowed on the exact managed layout:
-        // <ManagedInstalls>/<version>, a real directory (never a link/junction).
+        // <ManagedInstalls>/<version> (or <version>--<arch>), a real directory
+        // (never a link/junction).
+        var expectedLeaf = target.Architecture is null ||
+                           Architectures.MatchesHost(target.Architecture, _environment.RuntimeArchitecture)
+            ? target.Version.Raw
+            : $"{target.Version.Raw}--{target.Architecture}";
         if (!string.Equals(parent, managedRoot, comparison) ||
-            !string.Equals(Path.GetFileName(hostRoot), target.Version.Raw, comparison))
+            !string.Equals(Path.GetFileName(hostRoot), expectedLeaf, comparison))
         {
             throw new InvalidOperationException(
-                $"Refusing to delete '{hostRoot}': it is not a direct managed install under '{managedRoot}'.");
+                $"Refusing to delete '{TerminalText.Sanitize(hostRoot)}': it is not a direct managed install under '{TerminalText.Sanitize(managedRoot)}'.");
         }
 
         var info = new DirectoryInfo(hostRoot);
         if (info.LinkTarget is not null || (info.Attributes & FileAttributes.ReparsePoint) != 0)
         {
             throw new InvalidOperationException(
-                $"Refusing to delete '{hostRoot}': it is a symbolic link or junction. Remove it manually if intended.");
+                $"Refusing to delete '{TerminalText.Sanitize(hostRoot)}': it is a symbolic link or junction. Remove it manually if intended.");
         }
 
         Directory.Delete(hostRoot, recursive: true);

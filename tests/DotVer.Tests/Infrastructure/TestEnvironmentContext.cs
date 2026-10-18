@@ -25,6 +25,7 @@ internal sealed class TestEnvironmentContext : IEnvironmentContext
     public bool IsWindows => _platform == TestPlatform.Windows;
     public bool IsLinux => _platform == TestPlatform.Linux;
     public bool IsMacOS => _platform == TestPlatform.MacOS;
+    public string RuntimeArchitecture => "x64";
 
     public IReadOnlyList<string> GetPathEntries()
     {

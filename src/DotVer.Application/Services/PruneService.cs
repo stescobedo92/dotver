@@ -27,15 +27,19 @@ public sealed class PruneService : IPruneService
         var config = await _stateService.GetConfigAsync(cancellationToken).ConfigureAwait(false);
         var managed = inventory.Where(static sdk => sdk.IsManaged).ToList();
 
+        // Latest is computed per (channel, architecture): a foreign build must
+        // never become the channel representative that condemns the native one.
         var latestByChannel = managed
-            .GroupBy(static sdk => ChannelOf(sdk), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(sdk => ChannelArchKey(sdk), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 static group => group.Key,
                 static group => group.OrderByDescending(static sdk => sdk.Version).First().Version.Raw,
                 StringComparer.OrdinalIgnoreCase);
 
         var pin = _globalJsonService.TryFind(_environment.CurrentDirectory);
-        var pinMatchedVersion = pin is null ? null : GlobalJsonMatcher.Match(pin, inventory)?.Version.Raw;
+        var pinMatched = pin is null ? null : GlobalJsonMatcher.Match(pin, inventory, _environment.RuntimeArchitecture);
+        var pinMatchedVersion = pinMatched?.Version.Raw;
+        var pinMatchedRoot = pinMatched?.HostRoot;
 
         var entries = new List<PruneEntry>();
         long total = 0;
@@ -49,26 +53,26 @@ public sealed class PruneService : IPruneService
             var channel = ChannelOf(sdk);
             var version = sdk.Version.Raw;
 
-            var protectedReason = ProtectedReason(config, pin, pinMatchedVersion, version);
+            var protectedReason = ProtectedReason(config, pin, pinMatchedVersion, version, pinMatchedRoot, sdk.HostRoot);
 
-            var isLatest = string.Equals(latestByChannel[channel], version, StringComparison.OrdinalIgnoreCase);
+            var isLatest = string.Equals(latestByChannel[ChannelArchKey(sdk)], version, StringComparison.OrdinalIgnoreCase);
             if (!keepLatestPerChannel || isLatest)
             {
                 entries.Add(new PruneEntry(version, channel, size, sdk.HostRoot, PruneAction.Keep,
-                    isLatest && keepLatestPerChannel ? "latest in channel" : null));
+                    isLatest && keepLatestPerChannel ? "latest in channel" : null, sdk.Architecture));
                 continue;
             }
 
             if (protectedReason is not null)
             {
-                entries.Add(new PruneEntry(version, channel, size, sdk.HostRoot, PruneAction.Skipped, protectedReason));
+                entries.Add(new PruneEntry(version, channel, size, sdk.HostRoot, PruneAction.Skipped, protectedReason, sdk.Architecture));
                 continue;
             }
 
             reclaimable += size;
             if (!execute)
             {
-                entries.Add(new PruneEntry(version, channel, size, sdk.HostRoot, PruneAction.WouldRemove, null));
+                entries.Add(new PruneEntry(version, channel, size, sdk.HostRoot, PruneAction.WouldRemove, null, sdk.Architecture));
                 continue;
             }
 
@@ -80,21 +84,23 @@ public sealed class PruneService : IPruneService
                 // the delete itself remains (no cross-process lock in dotver).
                 var freshConfig = await _stateService.GetConfigAsync(cancellationToken).ConfigureAwait(false);
                 var freshPin = _globalJsonService.TryFind(_environment.CurrentDirectory);
-                var freshMatched = freshPin is null ? null : GlobalJsonMatcher.Match(freshPin, inventory)?.Version.Raw;
-                var nowProtected = ProtectedReason(freshConfig, freshPin, freshMatched, version);
+                var freshMatchedSdk = freshPin is null ? null : GlobalJsonMatcher.Match(freshPin, inventory, _environment.RuntimeArchitecture);
+                var nowProtected = ProtectedReason(freshConfig, freshPin, freshMatchedSdk?.Version.Raw, version, freshMatchedSdk?.HostRoot, sdk.HostRoot);
                 if (nowProtected is not null)
                 {
                     reclaimable -= size;
-                    entries.Add(new PruneEntry(version, channel, size, sdk.HostRoot, PruneAction.Skipped, nowProtected));
+                    entries.Add(new PruneEntry(version, channel, size, sdk.HostRoot, PruneAction.Skipped, nowProtected, sdk.Architecture));
                     continue;
                 }
 
-                await _stateService.UninstallManagedAsync(version, cancellationToken).ConfigureAwait(false);
-                entries.Add(new PruneEntry(version, channel, size, sdk.HostRoot, PruneAction.Removed, null));
+                // Delete by installation identity, never by version string:
+                // with multi-arch builds a version does not identify a build.
+                await _stateService.UninstallManagedAsync(sdk, cancellationToken).ConfigureAwait(false);
+                entries.Add(new PruneEntry(version, channel, size, sdk.HostRoot, PruneAction.Removed, null, sdk.Architecture));
             }
             catch (Exception exception) when (exception is InvalidOperationException or IOException or UnauthorizedAccessException)
             {
-                entries.Add(new PruneEntry(version, channel, size, sdk.HostRoot, PruneAction.Failed, Sanitize(exception.Message)));
+                entries.Add(new PruneEntry(version, channel, size, sdk.HostRoot, PruneAction.Failed, Sanitize(exception.Message), sdk.Architecture));
             }
         }
 
@@ -105,7 +111,9 @@ public sealed class PruneService : IPruneService
         DotVerConfig config,
         GlobalJsonRequest? pin,
         string? pinMatchedVersion,
-        string version)
+        string version,
+        string? pinMatchedRoot = null,
+        string? candidateRoot = null)
     {
         if (string.Equals(config.CurrentVersion, version, StringComparison.OrdinalIgnoreCase))
         {
@@ -124,7 +132,11 @@ public sealed class PruneService : IPruneService
 
         if (pin is not null &&
             (string.Equals(pin.Version.Raw, version, StringComparison.OrdinalIgnoreCase) ||
-             string.Equals(pinMatchedVersion, version, StringComparison.OrdinalIgnoreCase)))
+             string.Equals(pinMatchedVersion, version, StringComparison.OrdinalIgnoreCase) ||
+             // Identity check: the exact installation the pin resolves to is
+             // protected even if another build shares its version string.
+             (pinMatchedRoot is not null && candidateRoot is not null &&
+              string.Equals(pinMatchedRoot, candidateRoot, StringComparison.OrdinalIgnoreCase))))
         {
             return "pinned by global.json";
         }
@@ -133,6 +145,9 @@ public sealed class PruneService : IPruneService
     }
 
     private static string ChannelOf(SdkInstallation sdk) => $"{sdk.Version.Major}.{sdk.Version.Minor}";
+
+    private string ChannelArchKey(SdkInstallation sdk) =>
+        $"{ChannelOf(sdk)}|{sdk.Architecture ?? _environment.RuntimeArchitecture}";
 
     private static string Sanitize(string value) =>
         new(value.Where(static c => !char.IsControl(c)).ToArray());
