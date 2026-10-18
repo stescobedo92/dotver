@@ -63,8 +63,16 @@ public sealed class StateService : IStateService
         return sdk;
     }
 
+    private static readonly string[] ReservedAliasNames = ["system", "current", "default", "latest"];
+
     public async Task AddAliasAsync(string alias, string versionToken, CancellationToken cancellationToken)
     {
+        if (ReservedAliasNames.Contains(alias.Trim(), StringComparer.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"'{alias.Trim()}' is a reserved token and cannot be used as an alias (reserved: {string.Join(", ", ReservedAliasNames)}).");
+        }
+
         var config = await _configStore.LoadAsync(cancellationToken).ConfigureAwait(false);
         var installations = await _inventoryService.ScanAsync(cancellationToken).ConfigureAwait(false);
         var sdk = _versionResolver.FindByToken(versionToken, config, installations)
@@ -149,6 +157,30 @@ public sealed class StateService : IStateService
         }
 
         return new UninstallOutcome(target.Version.Raw, removedDirectory, currentVersion, defaultVersion, removedAliases);
+    }
+
+    public async Task<bool> ClearCurrentAsync(CancellationToken cancellationToken)
+    {
+        var config = await _configStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(config.CurrentVersion))
+        {
+            return false;
+        }
+
+        await _configStore.SaveAsync(config with { CurrentVersion = null }, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    public async Task<bool> ClearDefaultAsync(CancellationToken cancellationToken)
+    {
+        var config = await _configStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(config.DefaultVersion))
+        {
+            return false;
+        }
+
+        await _configStore.SaveAsync(config with { DefaultVersion = null }, cancellationToken).ConfigureAwait(false);
+        return true;
     }
 
     public async Task<RepointResult> RepointVersionAsync(string fromVersion, string toVersion, CancellationToken cancellationToken)

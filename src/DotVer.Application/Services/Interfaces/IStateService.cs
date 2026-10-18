@@ -13,4 +13,6 @@ public interface IStateService
     Task RegisterRootAsync(string path, CancellationToken cancellationToken);
     Task<UninstallOutcome> UninstallManagedAsync(string token, CancellationToken cancellationToken);
     Task<RepointResult> RepointVersionAsync(string fromVersion, string toVersion, CancellationToken cancellationToken);
+    Task<bool> ClearCurrentAsync(CancellationToken cancellationToken);
+    Task<bool> ClearDefaultAsync(CancellationToken cancellationToken);
 }

@@ -40,15 +40,37 @@ if (args.Length > 0 && string.Equals(args[0], "intercept", StringComparison.Ordi
 
 var isExec = args.Length > 0 && string.Equals(args[0], "exec", StringComparison.OrdinalIgnoreCase);
 var isWhich = args.Length > 0 && string.Equals(args[0], "which", StringComparison.OrdinalIgnoreCase);
+var isComplete = args.Length > 0 && string.Equals(args[0], "__complete", StringComparison.OrdinalIgnoreCase);
+var isCompletions = args.Length > 0 && string.Equals(args[0], "completions", StringComparison.OrdinalIgnoreCase);
 // For exec, only an immediate `exec --help` is dotver help; later --help belongs to the child.
 var wantsHelp = isExec
     ? args.Length > 1 && (string.Equals(args[1], "--help", StringComparison.OrdinalIgnoreCase) || string.Equals(args[1], "-h", StringComparison.OrdinalIgnoreCase))
     : args.Contains("--help", StringComparer.OrdinalIgnoreCase) || args.Contains("-h", StringComparer.OrdinalIgnoreCase);
 
-// exec/which resolve SDKs directly and must stay side-effect free for scripts.
-if (!wantsHelp && !isExec && !isWhich)
+// exec/which/completions resolve directly and must stay side-effect free for scripts.
+if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions)
 {
     await bootstrap.EnsureConfiguredAsync(CancellationToken.None);
+}
+
+// Hidden data source for shell completions: plain lines, never fails the shell.
+if (isComplete)
+{
+    try
+    {
+        var completionData = bootstrapProvider.GetRequiredService<ICompletionDataService>();
+        var candidates = await completionData.GetCandidatesAsync(args.Length > 1 ? args[1] : string.Empty, CancellationToken.None);
+        foreach (var candidate in candidates)
+        {
+            Console.Out.WriteLine(candidate);
+        }
+    }
+    catch (Exception)
+    {
+        // Completion must produce no output (and no error) on any failure.
+    }
+
+    return 0;
 }
 
 // `exec` is parsed manually so the child's own flags are never seen by Spectre.
@@ -138,6 +160,12 @@ app.Configure(config =>
 
     config.AddCommand<WhichCommand>("which")
         .WithDescription("Prints the dotnet path for a token, or for the active selection.");
+
+    config.AddCommand<CompletionsCommand>("completions")
+        .WithDescription("Prints the shell completion script for powershell, bash, zsh or fish.");
+
+    config.AddCommand<DeactivateCommand>("deactivate")
+        .WithDescription("Clears the persisted current version (falls back to default/global.json/system).");
 });
 
 return await app.RunAsync(args);

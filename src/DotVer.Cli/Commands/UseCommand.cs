@@ -25,6 +25,21 @@ internal sealed class UseCommand : AsyncCommandBase<VersionTokenSettings>
 
     public override async Task<int> ExecuteAsync(CommandContext context, VersionTokenSettings settings)
     {
+        if (string.Equals(settings.Version, "system", StringComparison.OrdinalIgnoreCase))
+        {
+            var configBefore = await _stateService.GetConfigAsync(CancellationToken.None).ConfigureAwait(false);
+            var cleared = await _stateService.ClearCurrentAsync(CancellationToken.None).ConfigureAwait(false);
+            Console.MarkupLine(cleared
+                ? "[green]Current cleared[/] [grey](selection now falls back to global.json, then default, then system)[/]"
+                : "[grey]No persisted current selection was set.[/]");
+            if (configBefore.Aliases.ContainsKey("system"))
+            {
+                Console.MarkupLine("[yellow]Warning:[/] you also have an alias named [aqua]system[/]; the reserved word shadows it here. Rename it with [aqua]dotver unalias system[/].");
+            }
+
+            return 0;
+        }
+
         var sdk = await _stateService.SetCurrentAsync(settings.Version, CancellationToken.None).ConfigureAwait(false);
         Console.MarkupLine($"[green]Current[/] -> [aqua]{Markup.Escape(sdk.Version.Raw)}[/]");
 
