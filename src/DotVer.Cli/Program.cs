@@ -78,6 +78,10 @@ app.Configure(config =>
     config.AddCommand<UnaliasCommand>("unalias")
         .WithDescription("Removes an alias.");
 
+    config.AddCommand<EnsureCommand>("ensure")
+        .WithAlias("sync")
+        .WithDescription("Installs the SDK pinned by global.json if it is missing.");
+
     config.AddCommand<InstallCommand>("install")
         .WithDescription("Installs an isolated SDK using the official .NET install script.");
 

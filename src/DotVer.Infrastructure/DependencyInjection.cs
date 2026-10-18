@@ -22,6 +22,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IEnvironmentBootstrapService, EnvironmentBootstrapService>();
         services.AddSingleton<IInstallService, InstallService>();
         services.AddSingleton<IStateService, StateService>();
+        services.AddSingleton<IEnsureService, EnsureService>();
 
         return services;
     }

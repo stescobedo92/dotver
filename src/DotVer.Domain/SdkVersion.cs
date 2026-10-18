@@ -4,9 +4,13 @@ namespace DotVer.Domain;
 
 public sealed record SdkVersion(string Raw, int Major, int Minor, int FeatureBand, int Patch, string? Suffix = null) : IComparable<SdkVersion>
 {
+    // Suffix is strict SemVer (identifiers of [0-9A-Za-z-], dot separated).
+    // Raw is used in file paths, so separators/traversal/control chars must never parse.
     private static readonly Regex Pattern = new(
-        @"^(?<major>\d+)\.(?<minor>\d+)\.(?<feature>\d+)(?:[-+](?<suffix>.+))?$",
+        @"^(?<major>\d+)\.(?<minor>\d+)\.(?<feature>\d+)(?:[-+](?<suffix>[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private const int MaxRawLength = 128;
 
     public int CompareTo(SdkVersion? other)
     {
@@ -62,7 +66,7 @@ public sealed record SdkVersion(string Raw, int Major, int Minor, int FeatureBan
     public static bool TryParse(string? value, out SdkVersion? version)
     {
         version = null;
-        if (string.IsNullOrWhiteSpace(value))
+        if (string.IsNullOrWhiteSpace(value) || value.Trim().Length > MaxRawLength)
         {
             return false;
         }

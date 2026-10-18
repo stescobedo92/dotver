@@ -129,6 +129,24 @@ public static class JsonReports
         });
     }
 
+    public static string ForEnsure(EnsureOutcome outcome)
+    {
+        ArgumentNullException.ThrowIfNull(outcome);
+
+        return Root(new JsonObject
+        {
+            ["filePath"] = outcome.Request.FilePath,
+            ["requested"] = outcome.Request.Version.Raw,
+            ["rollForward"] = outcome.Request.RollForward == SdkRollForward.Default
+                ? null
+                : GlobalJsonService.FormatRollForward(outcome.Request.RollForward),
+            ["resolved"] = outcome.Installation.Version.Raw,
+            ["installedNow"] = outcome.InstalledNow,
+            ["hostRoot"] = outcome.Installation.HostRoot,
+            ["dotnetPath"] = outcome.Installation.DotnetPath
+        });
+    }
+
     private static string Root(JsonObject payload)
     {
         var root = new JsonObject { ["schemaVersion"] = SchemaVersion };

@@ -65,6 +65,13 @@ public sealed class InstallService : IInstallService
             throw new InvalidOperationException($"Could not resolve '{token}' as a version or channel.");
         }
 
+        // Remote metadata is untrusted input for path construction: fail closed.
+        if (!SdkVersion.TryParse(selectedChannel.LatestSdkVersion, out _))
+        {
+            throw new InvalidOperationException(
+                $"Release metadata for channel {selectedChannel.Channel} returned an invalid SDK version '{selectedChannel.LatestSdkVersion}'.");
+        }
+
         return new InstallPlan(token, selectedChannel.LatestSdkVersion, $"Channel {selectedChannel.Channel} resolved to {selectedChannel.LatestSdkVersion}.", selectedChannel);
     }
 
@@ -79,10 +86,15 @@ public sealed class InstallService : IInstallService
             return new InstallOutcome(plan, alreadyInstalled, true);
         }
 
+        if (!SdkVersion.TryParse(plan.ResolvedVersion, out _))
+        {
+            throw new InvalidOperationException($"Refusing to install invalid SDK version '{plan.ResolvedVersion}'.");
+        }
+
         Directory.CreateDirectory(_paths.ManagedInstalls);
         Directory.CreateDirectory(_paths.Scripts);
 
-        var installRoot = Path.Combine(_paths.ManagedInstalls, plan.ResolvedVersion);
+        var installRoot = ResolveManagedInstallRoot(plan.ResolvedVersion);
         Directory.CreateDirectory(installRoot);
 
         if (_environment.IsWindows)
@@ -90,9 +102,13 @@ public sealed class InstallService : IInstallService
             var scriptPath = Path.Combine(_paths.Scripts, "dotnet-install.ps1");
             await _httpResourceClient.DownloadFileAsync(PowerShellInstallScript, scriptPath, cancellationToken).ConfigureAwait(false);
 
+            // Never resolve pwsh through the current directory (may be an untrusted repo).
+            var powerShell = ExecutableLocator.FindOnPath(_environment, "pwsh.exe")
+                ?? throw new InvalidOperationException("Could not find pwsh.exe on PATH (the current directory is intentionally excluded).");
+
             var result = await _processRunner.RunAsync(
                 new ProcessSpec(
-                    "pwsh",
+                    powerShell,
                     ["-NoProfile", "-File", scriptPath, "-Version", plan.ResolvedVersion, "-InstallDir", installRoot, "-NoPath"]),
                 cancellationToken).ConfigureAwait(false);
 
@@ -146,6 +162,19 @@ public sealed class InstallService : IInstallService
                 node.TryGetProperty("release-type", out var releaseType) ? releaseType.GetString() ?? "unknown" : "unknown"))
             .OrderByDescending(static channel => channel.Channel, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private string ResolveManagedInstallRoot(string version)
+    {
+        var managedRoot = Path.GetFullPath(_paths.ManagedInstalls);
+        var candidate = Path.GetFullPath(Path.Combine(managedRoot, version));
+        var comparison = _environment.IsWindows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (!candidate.StartsWith(managedRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, comparison))
+        {
+            throw new InvalidOperationException($"Refusing to install outside the managed installs directory: '{candidate}'.");
+        }
+
+        return candidate;
     }
 
     private static Version ParseChannelVersion(ReleaseChannel channel)
