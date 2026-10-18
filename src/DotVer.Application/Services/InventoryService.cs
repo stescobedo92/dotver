@@ -51,7 +51,7 @@ public sealed class InventoryService : IInventoryService
             }
         }
 
-        foreach (var knownRoot in GetKnownRoots())
+        foreach (var knownRoot in _environment.GetKnownDotnetRoots())
         {
             RegisterRoot(knownRoot, SdkOriginKind.OfficialInstallRoot, "known-root", isManaged: false);
         }
@@ -152,7 +152,7 @@ public sealed class InventoryService : IInventoryService
 
     public string? GetSystemDotnetPath()
     {
-        foreach (var root in GetKnownRoots())
+        foreach (var root in _environment.GetKnownDotnetRoots())
         {
             var dotnetPath = ResolveDotnetPath(root);
             if (dotnetPath is not null)
@@ -162,31 +162,6 @@ public sealed class InventoryService : IInventoryService
         }
 
         return null;
-    }
-
-    private IEnumerable<string> GetKnownRoots()
-    {
-        if (_environment.IsWindows)
-        {
-            var programFiles = _environment.GetEnvironmentVariable("ProgramFiles");
-            var programFilesX86 = _environment.GetEnvironmentVariable("ProgramFiles(x86)");
-
-            if (!string.IsNullOrWhiteSpace(programFiles))
-            {
-                yield return Path.Combine(programFiles, "dotnet");
-            }
-
-            if (!string.IsNullOrWhiteSpace(programFilesX86))
-            {
-                yield return Path.Combine(programFilesX86, "dotnet");
-            }
-
-            yield break;
-        }
-
-        yield return "/usr/share/dotnet";
-        yield return "/usr/local/share/dotnet";
-        yield return "/usr/lib/dotnet";
     }
 
     private string? ResolveDotnetPath(string hostRoot)

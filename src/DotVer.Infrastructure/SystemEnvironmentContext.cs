@@ -73,6 +73,29 @@ public sealed class SystemEnvironmentContext : IEnvironmentContext
             .ToList();
     }
 
+    public IReadOnlyList<string> GetKnownDotnetRoots()
+    {
+        if (!IsWindows)
+        {
+            return ["/usr/share/dotnet", "/usr/local/share/dotnet", "/usr/lib/dotnet"];
+        }
+
+        var roots = new List<string>();
+        var programFiles = Environment.GetEnvironmentVariable("ProgramFiles");
+        if (!string.IsNullOrWhiteSpace(programFiles))
+        {
+            roots.Add(Path.Combine(programFiles, "dotnet"));
+        }
+
+        var programFilesX86 = Environment.GetEnvironmentVariable("ProgramFiles(x86)");
+        if (!string.IsNullOrWhiteSpace(programFilesX86))
+        {
+            roots.Add(Path.Combine(programFilesX86, "dotnet"));
+        }
+
+        return roots;
+    }
+
     public string? GetEnvironmentVariable(string name) => Environment.GetEnvironmentVariable(name);
 
     public string? GetUserEnvironmentVariable(string name) =>

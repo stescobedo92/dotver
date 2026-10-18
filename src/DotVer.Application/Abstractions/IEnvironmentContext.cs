@@ -12,6 +12,7 @@ public interface IEnvironmentContext
     bool IsMacOS { get; }
     string RuntimeArchitecture { get; }
     IReadOnlyList<string> GetPathEntries();
+    IReadOnlyList<string> GetKnownDotnetRoots();
     string? GetEnvironmentVariable(string name);
     string? GetUserEnvironmentVariable(string name);
     void SetUserEnvironmentVariable(string name, string value);

@@ -37,6 +37,30 @@ internal sealed class TestEnvironmentContext : IEnvironmentContext
         return value.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
+    public IReadOnlyList<string> GetKnownDotnetRoots()
+    {
+        if (!IsWindows)
+        {
+            // Sandbox-contained stand-in: tests must never discover the host's real /usr/share/dotnet.
+            return [Path.Combine(CurrentDirectory, "known-dotnet-root")];
+        }
+
+        var roots = new List<string>();
+        var programFiles = GetEnvironmentVariable("ProgramFiles");
+        if (!string.IsNullOrWhiteSpace(programFiles))
+        {
+            roots.Add(Path.Combine(programFiles, "dotnet"));
+        }
+
+        var programFilesX86 = GetEnvironmentVariable("ProgramFiles(x86)");
+        if (!string.IsNullOrWhiteSpace(programFilesX86))
+        {
+            roots.Add(Path.Combine(programFilesX86, "dotnet"));
+        }
+
+        return roots;
+    }
+
     public string? GetEnvironmentVariable(string name) => _variables.TryGetValue(name, out var value) ? value : null;
 
     public string? GetUserEnvironmentVariable(string name) => _variables.TryGetValue(name, out var value) ? value : null;
