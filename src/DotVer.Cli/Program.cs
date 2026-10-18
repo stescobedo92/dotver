@@ -42,13 +42,14 @@ var isExec = args.Length > 0 && string.Equals(args[0], "exec", StringComparison.
 var isWhich = args.Length > 0 && string.Equals(args[0], "which", StringComparison.OrdinalIgnoreCase);
 var isComplete = args.Length > 0 && string.Equals(args[0], "__complete", StringComparison.OrdinalIgnoreCase);
 var isCompletions = args.Length > 0 && string.Equals(args[0], "completions", StringComparison.OrdinalIgnoreCase);
+var isAudit = args.Length > 0 && string.Equals(args[0], "audit", StringComparison.OrdinalIgnoreCase);
 // For exec, only an immediate `exec --help` is dotver help; later --help belongs to the child.
 var wantsHelp = isExec
     ? args.Length > 1 && (string.Equals(args[1], "--help", StringComparison.OrdinalIgnoreCase) || string.Equals(args[1], "-h", StringComparison.OrdinalIgnoreCase))
     : args.Contains("--help", StringComparer.OrdinalIgnoreCase) || args.Contains("-h", StringComparer.OrdinalIgnoreCase);
 
 // exec/which/completions resolve directly and must stay side-effect free for scripts.
-if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions)
+if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions && !isAudit)
 {
     await bootstrap.EnsureConfiguredAsync(CancellationToken.None);
 }
@@ -135,6 +136,9 @@ app.Configure(config =>
 
     config.AddCommand<InstallCommand>("install")
         .WithDescription("Installs an isolated SDK using the official .NET install script.");
+
+    config.AddCommand<AuditCommand>("audit")
+        .WithDescription("Reports installed SDKs missing published security fixes (CVE). Exit 1 if vulnerable, 2 if any could not be verified.");
 
     config.AddCommand<OutdatedCommand>("outdated")
         .WithDescription("Shows SDKs with updates available, end-of-life channels and prereleases.");

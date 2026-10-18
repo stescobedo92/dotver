@@ -266,6 +266,35 @@ public static class JsonReports
         return Root(new JsonObject { ["upgrades"] = items });
     }
 
+    public static string ForAudit(IReadOnlyList<AuditEntry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+
+        var items = new JsonArray();
+        foreach (var entry in entries)
+        {
+            var cves = new JsonArray();
+            foreach (var cve in entry.CveIds)
+            {
+                cves.Add(cve);
+            }
+
+            items.Add(new JsonObject
+            {
+                ["version"] = entry.Installation.Version.Raw,
+                ["channel"] = entry.Channel,
+                ["isManaged"] = entry.Installation.IsManaged,
+                ["hostRoot"] = entry.Installation.HostRoot,
+                ["metadataKnown"] = entry.MetadataKnown,
+                ["vulnerable"] = entry.IsVulnerable,
+                ["fixedIn"] = entry.FixedInSdk,
+                ["cveIds"] = cves
+            });
+        }
+
+        return Root(new JsonObject { ["sdks"] = items });
+    }
+
     private static string Root(JsonObject payload)
     {
         var root = new JsonObject { ["schemaVersion"] = SchemaVersion };

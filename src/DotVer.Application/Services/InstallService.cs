@@ -159,7 +159,8 @@ public sealed class InstallService : IInstallService
                 node.GetProperty("channel-version").GetString() ?? "unknown",
                 node.GetProperty("latest-sdk").GetString() ?? "unknown",
                 node.TryGetProperty("support-phase", out var supportPhase) ? supportPhase.GetString() ?? "unknown" : "unknown",
-                node.TryGetProperty("release-type", out var releaseType) ? releaseType.GetString() ?? "unknown" : "unknown"))
+                node.TryGetProperty("release-type", out var releaseType) ? releaseType.GetString() ?? "unknown" : "unknown",
+                node.TryGetProperty("releases.json", out var releasesJson) ? releasesJson.GetString() : null))
             .OrderByDescending(static channel => channel.Channel, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }

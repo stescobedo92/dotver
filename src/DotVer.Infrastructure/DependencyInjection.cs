@@ -28,6 +28,18 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICompletionDataService, CompletionDataService>();
         services.AddSingleton<IDoctorService, DoctorService>();
         services.AddSingleton<IPruneService, PruneService>();
+        services.AddSingleton<IAuditService, AuditService>();
+
+        // Dedicated metadata client: redirects are never followed, so a
+        // poisoned endpoint cannot bounce requests to internal services.
+        services.AddHttpClient<IReleaseMetadataService, ReleaseMetadataService>(client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(30);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            {
+                AllowAutoRedirect = false
+            });
 
         return services;
     }
