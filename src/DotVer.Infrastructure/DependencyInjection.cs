@@ -23,6 +23,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IInstallService, InstallService>();
         services.AddSingleton<IStateService, StateService>();
         services.AddSingleton<IEnsureService, EnsureService>();
+        services.AddSingleton<IExecService, ExecService>();
 
         return services;
     }

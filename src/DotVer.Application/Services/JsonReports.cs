@@ -147,6 +147,17 @@ public static class JsonReports
         });
     }
 
+    public static string ForWhich(string? version, string? dotnetPath, string? hostRoot, string reason)
+    {
+        return Root(new JsonObject
+        {
+            ["version"] = version,
+            ["dotnetPath"] = dotnetPath,
+            ["hostRoot"] = hostRoot,
+            ["reason"] = reason
+        });
+    }
+
     private static string Root(JsonObject payload)
     {
         var root = new JsonObject { ["schemaVersion"] = SchemaVersion };

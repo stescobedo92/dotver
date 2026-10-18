@@ -38,10 +38,39 @@ if (args.Length > 0 && string.Equals(args[0], "intercept", StringComparison.Ordi
     return result.ExitCode;
 }
 
-if (!args.Contains("--help", StringComparer.OrdinalIgnoreCase) &&
-    !args.Contains("-h", StringComparer.OrdinalIgnoreCase))
+var isExec = args.Length > 0 && string.Equals(args[0], "exec", StringComparison.OrdinalIgnoreCase);
+var isWhich = args.Length > 0 && string.Equals(args[0], "which", StringComparison.OrdinalIgnoreCase);
+// For exec, only an immediate `exec --help` is dotver help; later --help belongs to the child.
+var wantsHelp = isExec
+    ? args.Length > 1 && (string.Equals(args[1], "--help", StringComparison.OrdinalIgnoreCase) || string.Equals(args[1], "-h", StringComparison.OrdinalIgnoreCase))
+    : args.Contains("--help", StringComparer.OrdinalIgnoreCase) || args.Contains("-h", StringComparer.OrdinalIgnoreCase);
+
+// exec/which resolve SDKs directly and must stay side-effect free for scripts.
+if (!wantsHelp && !isExec && !isWhich)
 {
     await bootstrap.EnsureConfiguredAsync(CancellationToken.None);
+}
+
+// `exec` is parsed manually so the child's own flags are never seen by Spectre.
+if (!wantsHelp && isExec)
+{
+    if (args.Length < 4 || !string.Equals(args[2], "--", StringComparison.Ordinal))
+    {
+        Console.Error.WriteLine("Usage: dotver exec <version> -- <command> [args...]");
+        return 2;
+    }
+
+    try
+    {
+        var exec = bootstrapProvider.GetRequiredService<IExecService>();
+        var result = await exec.ExecuteAsync(args[1], args.Skip(3).ToArray(), CancellationToken.None);
+        return result.ExitCode;
+    }
+    catch (Exception exception) when (exception is InvalidOperationException or ArgumentException or IOException or System.ComponentModel.Win32Exception)
+    {
+        Console.Error.WriteLine($"Error: {exception.Message}");
+        return 1;
+    }
 }
 
 var app = new CommandApp<DashboardCommand>(registrar);
@@ -97,6 +126,12 @@ app.Configure(config =>
 
     config.AddCommand<RegisterRootCommand>("register-root")
         .WithDescription("Registers an additional external root for scanning.");
+
+    config.AddCommand<ExecCommand>("exec")
+        .WithDescription("Runs a command with a specific SDK: dotver exec <version> -- <command> [[args...]]");
+
+    config.AddCommand<WhichCommand>("which")
+        .WithDescription("Prints the dotnet path for a token, or for the active selection.");
 });
 
 return await app.RunAsync(args);

@@ -62,6 +62,51 @@ public sealed class SelectionServiceTests
     }
 
     [Fact]
+    public async Task DotVerVersionOverrideWinsOverGlobalJson()
+    {
+        using var sandbox = new TestSandbox(TestPlatform.Windows);
+        sandbox.CreateSdkInstall("8.0.412", isManaged: true);
+        sandbox.CreateSdkInstall("10.0.201", isManaged: true);
+        File.WriteAllText(
+            Path.Combine(sandbox.Root, "global.json"),
+            """{"sdk":{"version":"10.0.201"}}""");
+
+        var config = new InMemoryConfigStore(DotVerConfig.Empty);
+        var environment = sandbox.CreateEnvironment();
+        environment.SetUserEnvironmentVariable("DOTVER_VERSION", "8.0.412");
+        var inventory = new InventoryService(DotVerPaths.From(environment), environment, config);
+        var selectionService = new SelectionService(inventory, config, new GlobalJsonService(), new VersionResolver(), environment);
+
+        var selection = await selectionService.ResolveAsync(CancellationToken.None);
+
+        Assert.Equal("8.0.412", selection.Installation?.Version.Raw);
+        Assert.Contains("DOTVER_VERSION", selection.Reason, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("lts")]
+    [InlineData("8.0")]
+    [InlineData("9.0.999")]
+    public async Task DotVerVersionOverride_NonExactOrMissing_FailsLoudly(string overrideValue)
+    {
+        using var sandbox = new TestSandbox(TestPlatform.Windows);
+        sandbox.CreateSdkInstall("8.0.412", isManaged: true);
+
+        var config = new InMemoryConfigStore(new DotVerConfig(
+            null,
+            null,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["lts"] = "8.0.412" },
+            []));
+        var environment = sandbox.CreateEnvironment();
+        environment.SetUserEnvironmentVariable("DOTVER_VERSION", overrideValue);
+        var inventory = new InventoryService(DotVerPaths.From(environment), environment, config);
+        var selectionService = new SelectionService(inventory, config, new GlobalJsonService(), new VersionResolver(), environment);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => selectionService.ResolveAsync(CancellationToken.None));
+    }
+
+    [Fact]
     public async Task MalformedGlobalJsonDoesNotBreakResolution()
     {
         using var sandbox = new TestSandbox(TestPlatform.Windows);

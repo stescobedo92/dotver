@@ -11,8 +11,9 @@ public sealed class ProcessRunner : IProcessRunner
         var startInfo = new ProcessStartInfo
         {
             FileName = spec.FileName,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
+            RedirectStandardError = !spec.InheritStandardIo,
+            RedirectStandardOutput = !spec.InheritStandardIo,
+            RedirectStandardInput = false,
             UseShellExecute = false
         };
 
@@ -44,10 +45,35 @@ public sealed class ProcessRunner : IProcessRunner
         using var process = new Process { StartInfo = startInfo };
         process.Start();
 
-        var stdout = await process.StandardOutput.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-        var stderr = await process.StandardError.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (spec.InheritStandardIo)
+            {
+                await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+                return new ProcessResult(process.ExitCode, string.Empty, string.Empty);
+            }
 
-        return new ProcessResult(process.ExitCode, stdout, stderr);
+            var stdout = await process.StandardOutput.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+            var stderr = await process.StandardError.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+
+            return new ProcessResult(process.ExitCode, stdout, stderr);
+        }
+        catch (OperationCanceledException)
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // Process already exited between the check and Kill.
+            }
+
+            throw;
+        }
     }
 }

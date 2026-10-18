@@ -29,6 +29,23 @@ public sealed class SelectionService : ISelectionService
         var installations = await _inventoryService.ScanAsync(cancellationToken).ConfigureAwait(false);
         var config = await _configStore.LoadAsync(cancellationToken).ConfigureAwait(false);
 
+        // Explicit per-process override (set by `dotver exec`) wins over everything.
+        // Only exact installed versions are honored (that is all `exec` emits):
+        // no aliases/prefixes, and an unresolvable value fails loudly instead of
+        // silently falling through to another SDK.
+        var overrideToken = _environment.GetEnvironmentVariable("DOTVER_VERSION");
+        if (!string.IsNullOrWhiteSpace(overrideToken))
+        {
+            var overridden = SdkVersion.TryParse(overrideToken.Trim(), out _)
+                ? installations.FirstOrDefault(sdk => string.Equals(sdk.Version.Raw, overrideToken.Trim(), StringComparison.OrdinalIgnoreCase))
+                : null;
+
+            return overridden is not null
+                ? new SdkSelection(overridden, $"Selected by DOTVER_VERSION ({overridden.Version.Raw})", false)
+                : throw new InvalidOperationException(
+                    $"DOTVER_VERSION is set to '{Sanitize(overrideToken)}' but that exact SDK version is not installed. Unset DOTVER_VERSION or install it first.");
+        }
+
         // A project pin wins inside its directory tree; otherwise the shim could
         // never honor global.json once a global current/default exists.
         var globalJson = _globalJsonService.TryFind(_environment.CurrentDirectory);
@@ -65,4 +82,7 @@ public sealed class SelectionService : ISelectionService
 
         return new SdkSelection(systemRootSelection, "Selected by system fallback", false);
     }
+
+    private static string Sanitize(string value) =>
+        new(value.Trim().Where(static c => !char.IsControl(c)).ToArray());
 }
