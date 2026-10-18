@@ -8,7 +8,10 @@
 - Cross-platform: Windows, Linux, and macOS.
 - Detection of installed SDKs via official root, `DOTNET_ROOT`, `PATH`, and manually registered roots.
 - Isolated installations in `~/.dotver/installs/<version>` using the official `dotnet-install` script.
-- Shims to intercept `dotnet --info`, `dotnet --list-sdks`, and `dotnet --version`.
+- Per-project SDK pins in `global.json` (`dotver local`), with one-command onboarding on any machine (`dotver ensure`).
+- Shims to intercept `dotnet --info`, `dotnet --list-sdks`, and `dotnet --version`, plus one-off runs with a specific SDK (`dotver exec`) that do not change your global selection.
+- Maintenance built in: update/EOL reporting (`outdated`/`upgrade`), health checks with repairs (`doctor --fix`), and disk cleanup (`prune`).
+- Scriptable output (`--json`, stable exit codes) and shell completions for PowerShell, bash, zsh, and fish.
 - Unit tests and pipelines for build/release.
 - Packaging prepared for npm and manifest generation for WinGet.
 
@@ -69,6 +72,7 @@ $ dotver install lts
 │ Resolved         │ 8.0.412                                    │
 │ Reason           │ Channel 8.0 resolved to 8.0.412.           │
 │ Status           │ Installed                                  │
+│ Installed SDK    │ 8.0.412                                    │
 │ Current          │ 8.0.412                                    │
 │ Default          │ 8.0.412                                    │
 │ Managed root     │ ~/.dotver/installs/8.0.412                 │
@@ -91,21 +95,38 @@ $ dotver list
 ╰──────────┴─────────┴─────────┴─────────┴────────┴──────────────────┴─────────────────────────────────╯
 ```
 
-### Switch version in a project using global.json
+### Pin a project with global.json and onboard another machine
 
 ```bash
-# Project has global.json with sdk.version = "10.0.201"
-$ dotver install 10.0.201
-$ dotver use 10.0.201
+# Inside the repo: create/update global.json (other properties are preserved)
+$ dotver local 10.0.201
+Local -> 10.0.201
+~/src/my-app/global.json
 
+# The pin wins inside this directory tree, no `use` needed
 $ dotnet --version
 10.0.201
 
-# Back to default outside the project
+$ dotver local
+Local -> 10.0.201
+~/src/my-app/global.json
+
+# On a fresh clone/machine, materialize the pinned SDK in one command
+$ dotver ensure
+# (add --use to also make it the persisted current version)
+
+# Back to current/default outside the project
 $ cd ~
 $ dotnet --version
 8.0.412
+
+# Remove the pin from this directory's global.json
+$ cd ~/src/my-app && dotver local --clear
 ```
+
+Pinning a version that is not installed yet is allowed (useful for shared
+repos); `dotver ensure` installs exactly what the pin asks for, honoring its
+`rollForward` (`dotver local 8.0.412 --roll-forward latestFeature`).
 
 ### Create an alias and use it across projects
 
@@ -125,7 +146,7 @@ $ dotver alias
 └─────────┴──────────┘
 ```
 
-### Check environment health
+### Check environment health and repair it
 
 ```bash
 $ dotver doctor
@@ -138,9 +159,98 @@ $ dotver doctor
 ║ Current          │ 10.0.201      ║
 ║ Default          │ 8.0.412       ║
 ║ Aliases          │ 2             ║
-║ Warning          │ None          ║
+║ Issues           │ 1             ║
 ╚══════════════════╧═══════════════╝
+alias-missing Alias 'old' points to 6.0.999, which is not installed.
+Run dotver doctor --fix to repair fixable issues.
+# (exit code is 1 while issues remain)
+
+$ dotver doctor --fix
+Fixed: Removed alias 'old' (points to missing 6.0.999).
 ```
+
+`doctor` reports dangling `current`/`default`/alias references, missing
+registered roots, incomplete managed installs, missing shims, multi-SDK
+roots, and a `global.json` pin no installed SDK satisfies. `--fix`
+reconfigures shims/PATH/profiles and repairs the persisted config in one
+save (previous config is backed up to `config.json.bak`). It refuses to
+destroy config when the scan looks degraded — e.g. a registered root on a
+disconnected drive — and reports `repair-skipped` instead.
+
+### Run one command with a specific SDK
+
+```bash
+# Does not change current/default; the child gets DOTNET_ROOT and DOTVER_VERSION
+$ dotver exec 8.0 -- dotnet test
+$ dotver exec lts -- dotnet build -c Release
+
+# Which dotnet host would run? (plain path, script-friendly)
+$ dotver which
+~/.dotver/installs/10.0.201/dotnet
+$ dotver which 8.0
+~/.dotver/installs/8.0.412/dotnet
+
+# Back to the fallback chain (global.json, then default, then system)
+$ dotver use system
+# same as: dotver deactivate
+```
+
+### Keep SDKs updated and reclaim disk
+
+```bash
+$ dotver outdated
+# Version   Channel   Latest    Status            Managed
+# 8.0.400   8.0       8.0.412   update available  yes
+# 6.0.428   6.0       6.0.428   end of life       yes
+
+$ dotver upgrade --all --prune-old
+# installs each channel's latest, repoints current/default/aliases,
+# then deletes the old patch (never a stable-to-prerelease jump)
+
+$ dotver prune
+# managed disk usage per SDK (dry-run report)
+
+$ dotver prune --keep-latest-per-channel
+# still a dry run: shows what would be removed
+
+$ dotver prune --keep-latest-per-channel --yes
+# deletes older patches; current, default, alias targets and the current
+# directory's global.json match (including rollForward) stay protected
+```
+
+### Scripting and CI
+
+```bash
+$ dotver list --json
+$ dotver current --json
+$ dotver outdated --json
+$ dotver install 8.0.412 --no-use --no-default   # install without touching selection
+$ dotver doctor --json                           # non-zero exit while issues remain
+```
+
+Every `--json` report carries `"schemaVersion": 1` and is written to raw
+stdout (no terminal wrapping), so it is safe to pipe into `jq` or a CI parser.
+
+### Shell completions
+
+```powershell
+# PowerShell: append the generated script to your profile
+dotver completions powershell >> $PROFILE
+```
+
+```bash
+# bash: add this line to ~/.bashrc
+source <(dotver completions bash)
+
+# zsh: save as _dotver in a directory on your fpath, or source it
+source <(dotver completions zsh)
+
+# fish
+dotver completions fish > ~/.config/fish/completions/dotver.fish
+```
+
+Completions suggest commands plus installed versions and aliases for
+version-taking commands (`use`, `local`, `exec`, `install`, `upgrade`, …).
 
 ### Install via npm (no .NET required)
 
@@ -165,6 +275,13 @@ winget install DotVer.DotVer
 
 This is intentional: an official root like `C:\Program Files\dotnet` may contain multiple SDKs, and the host `dotnet` decides which one to use based on `global.json` and the CLI's roll-forward rules.
 
+Destructive or mutating maintenance only ever applies to managed SDKs:
+`uninstall`, `upgrade`, and `prune` refuse to touch external installations,
+and recursive deletes require the exact managed layout
+(`~/.dotver/installs/<version>`, never through a symlink or junction).
+`outdated` still reports external SDKs so end-of-life system installs stay
+visible.
+
 ## Automatic configuration
 
 `dotver` automatically configures on first use:
@@ -172,7 +289,11 @@ This is intentional: an official root like `C:\Program Files\dotnet` may contain
 - shims in `~/.dotver/shims`
 - persistent user `PATH`
 - PowerShell profiles on Windows and supported profiles on Linux/macOS
-- `current` and `default` when installing an SDK
+- `current` and `default` when installing an SDK (opt out per install with
+  `--no-use` and/or `--no-default`)
+
+Script-oriented commands skip this bootstrap so they stay side-effect free:
+`exec`, `which`, and `completions` never rewrite shims, `PATH`, or profiles.
 
 On Windows, the current process cannot mutate the already-open parent shell; if the persistent PATH changes, simply open a new terminal.
 
