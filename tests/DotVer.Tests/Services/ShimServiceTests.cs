@@ -45,6 +45,29 @@ public sealed class ShimServiceTests
     }
 
     [Fact]
+    public async Task UnixShim_EscapesShellMetacharactersInProcessPath()
+    {
+        using var sandbox = new TestSandbox(TestPlatform.Linux);
+        var home = Path.Combine(sandbox.Root, "home");
+        Directory.CreateDirectory(home);
+        var variables = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["DOTVER_HOME"] = Path.Combine(sandbox.Root, ".dotver"),
+            ["PATH"] = string.Empty
+        };
+        var evilProcess = Path.Combine(sandbox.Root, "evil$(touch-pwned)", "dotnet");
+        var environment = new TestEnvironmentContext(home, sandbox.Root, evilProcess, variables, TestPlatform.Linux);
+        var paths = DotVerPaths.From(environment);
+        var service = new ShimService(paths, environment);
+
+        await service.InstallAsync(CancellationToken.None);
+
+        var shim = File.ReadAllText(Path.Combine(paths.Shims, "dotnet"));
+        Assert.Contains("\\$(touch-pwned)", shim, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"" + evilProcess + "\"", shim, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task WindowsBootstrapUpdatesPowerShellProfiles()
     {
         using var sandbox = new TestSandbox(TestPlatform.Windows);

@@ -1,4 +1,3 @@
-using System.Reflection;
 using DotVer.Application;
 
 namespace DotVer.Infrastructure;
@@ -15,7 +14,30 @@ public sealed class SystemEnvironmentContext : IEnvironmentContext
 
     public string ProcessPath => Environment.ProcessPath ?? "dotver";
 
-    public string EntryAssemblyPath => Assembly.GetEntryAssembly()?.Location ?? ProcessPath;
+    // Assembly.Location is empty (and IL3000) in single-file apps. The first
+    // command-line arg is the managed dll when launched as `dotnet dotver.dll`
+    // and the executable path otherwise, which is all ShimService needs.
+    public string EntryAssemblyPath
+    {
+        get
+        {
+            var args = Environment.GetCommandLineArgs();
+            if (args.Length == 0 || string.IsNullOrWhiteSpace(args[0]))
+            {
+                return ProcessPath;
+            }
+
+            try
+            {
+                var fullPath = Path.GetFullPath(args[0]);
+                return File.Exists(fullPath) ? fullPath : ProcessPath;
+            }
+            catch (Exception exception) when (exception is ArgumentException or IOException or NotSupportedException)
+            {
+                return ProcessPath;
+            }
+        }
+    }
 
     public bool IsWindows => OperatingSystem.IsWindows();
 

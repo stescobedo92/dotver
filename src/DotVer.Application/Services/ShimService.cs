@@ -28,17 +28,17 @@ public sealed class ShimService : IShimService
             files.Add(WriteFile("dotnet.cmd", $"@echo off{Environment.NewLine}{launcher.WindowsInterceptCommand}%*{Environment.NewLine}"));
             files.Add(WriteFile("dotver.ps1", $"{launcher.PowerShellInvoke} @args{Environment.NewLine}"));
 
-            var psEnv = $"$env:PATH = \"{_paths.Shims};$env:PATH\"{Environment.NewLine}" +
+            var psEnv = $"$env:PATH = \"{EscapePowerShellDoubleQuoted(_paths.Shims)};$env:PATH\"{Environment.NewLine}" +
                         $"function global:dotnet {{ {launcher.PowerShellInterceptInvoke} @args }}{Environment.NewLine}";
 
             files.Add(WriteEnvFile("dotver.ps1", psEnv));
-            files.Add(WriteEnvFile("dotver.cmd", $"@echo off{Environment.NewLine}set PATH={_paths.Shims};%PATH%{Environment.NewLine}"));
+            files.Add(WriteEnvFile("dotver.cmd", $"@echo off{Environment.NewLine}set PATH={EscapeCmdBatchValue(_paths.Shims)};%PATH%{Environment.NewLine}"));
         }
         else
         {
             files.Add(WriteExecutableFile("dotnet", $"#!/usr/bin/env bash{Environment.NewLine}{launcher.ShellInterceptCommand}\"$@\"{Environment.NewLine}"));
-            files.Add(WriteEnvFile("dotver.sh", $"export PATH=\"{_paths.Shims}:$PATH\"{Environment.NewLine}"));
-            files.Add(WriteEnvFile("dotver.fish", $"set -gx PATH \"{_paths.Shims}\" $PATH{Environment.NewLine}"));
+            files.Add(WriteEnvFile("dotver.sh", $"export PATH=\"{EscapeBashDoubleQuoted(_paths.Shims)}:$PATH\"{Environment.NewLine}"));
+            files.Add(WriteEnvFile("dotver.fish", $"set -gx PATH \"{EscapeBashDoubleQuoted(_paths.Shims)}\" $PATH{Environment.NewLine}"));
         }
 
         return Task.FromResult(new ShimInstallResult(_paths.Shims, files));
@@ -102,21 +102,46 @@ public sealed class ShimService : IShimService
         var runsAsManagedDll = Path.GetExtension(entryAssemblyPath).Equals(".dll", StringComparison.OrdinalIgnoreCase) &&
                                Path.GetFileName(processPath).StartsWith("dotnet", StringComparison.OrdinalIgnoreCase);
 
+        // Paths are embedded inside double quotes in shell scripts: escape any
+        // character that could break out of the quoted string in each shell.
+        var shellProcess = _environment.IsWindows ? EscapeCmdBatchValue(processPath) : EscapeBashDoubleQuoted(processPath);
+        var shellEntry = _environment.IsWindows ? EscapeCmdBatchValue(entryAssemblyPath) : EscapeBashDoubleQuoted(entryAssemblyPath);
+        var psProcess = EscapePowerShellDoubleQuoted(processPath);
+        var psEntry = EscapePowerShellDoubleQuoted(entryAssemblyPath);
+
         if (runsAsManagedDll)
         {
             return new ShimLauncher(
-                $"\"{processPath}\" \"{entryAssemblyPath}\" ",
-                $"& \"{processPath}\" \"{entryAssemblyPath}\"",
-                $"\"{processPath}\" \"{entryAssemblyPath}\" intercept -- ",
-                $"& \"{processPath}\" \"{entryAssemblyPath}\" intercept --");
+                $"\"{shellProcess}\" \"{shellEntry}\" ",
+                $"& \"{psProcess}\" \"{psEntry}\"",
+                $"\"{shellProcess}\" \"{shellEntry}\" intercept -- ",
+                $"& \"{psProcess}\" \"{psEntry}\" intercept --");
         }
 
         return new ShimLauncher(
-            $"\"{processPath}\" ",
-            $"& \"{processPath}\"",
-            $"\"{processPath}\" intercept -- ",
-            $"& \"{processPath}\" intercept --");
+            $"\"{shellProcess}\" ",
+            $"& \"{psProcess}\"",
+            $"\"{shellProcess}\" intercept -- ",
+            $"& \"{psProcess}\" intercept --");
     }
+
+    private static string EscapeBashDoubleQuoted(string value) =>
+        value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\"", "\\\"", StringComparison.Ordinal)
+            .Replace("$", "\\$", StringComparison.Ordinal)
+            .Replace("`", "\\`", StringComparison.Ordinal);
+
+    private static string EscapePowerShellDoubleQuoted(string value) =>
+        value
+            .Replace("`", "``", StringComparison.Ordinal)
+            .Replace("\"", "`\"", StringComparison.Ordinal)
+            .Replace("$", "`$", StringComparison.Ordinal);
+
+    private static string EscapeCmdBatchValue(string value) =>
+        value
+            .Replace("\"", string.Empty, StringComparison.Ordinal)
+            .Replace("%", "%%", StringComparison.Ordinal);
 
     private sealed record ShimLauncher(string ShellInvokePrefix, string PowerShellInvoke, string ShellInterceptCommand, string PowerShellInterceptInvoke)
     {

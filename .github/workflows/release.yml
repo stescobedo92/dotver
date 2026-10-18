@@ -19,18 +19,35 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.ver.outputs.version }}
+      assembly_version: ${{ steps.ver.outputs.assembly_version }}
       tag: ${{ steps.ver.outputs.tag }}
     steps:
       - name: Determine version
         id: ver
+        # Untrusted values arrive via env only, never interpolated into the
+        # script text, so a crafted input/ref cannot inject shell code.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ inputs.version }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="$INPUT_VERSION"
           else
-            VERSION="${{ github.ref_name }}"
+            VERSION="$REF_NAME"
           fi
           VERSION="${VERSION#v}"
+          # Strict SemVer core with optional prerelease/build metadata,
+          # anchored to the whole single-line string by the bash regex.
+          SEMVER_RE='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          if [[ ! $VERSION =~ $SEMVER_RE ]]; then
+            echo "::error::Version is not valid SemVer (expected e.g. 1.2.3 or 1.2.3-rc.1)."
+            exit 1
+          fi
+          # Assembly/File versions accept numeric components only.
+          ASSEMBLY_VERSION="$(echo "$VERSION" | cut -d- -f1 | cut -d+ -f1)"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "assembly_version=$ASSEMBLY_VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
@@ -83,6 +100,7 @@ jobs:
         shell: pwsh
         env:
           VERSION: ${{ needs.setup.outputs.version }}
+          ASSEMBLY_VERSION: ${{ needs.setup.outputs.assembly_version }}
         run: |
           dotnet publish src/DotVer.Cli/DotVer.Cli.csproj `
             -c Release `
@@ -92,8 +110,8 @@ jobs:
             -p:EnableCompressionInSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:Version=$env:VERSION `
-            -p:AssemblyVersion=$env:VERSION `
-            -p:FileVersion=$env:VERSION `
+            -p:AssemblyVersion=$env:ASSEMBLY_VERSION `
+            -p:FileVersion=$env:ASSEMBLY_VERSION `
             -o artifacts/publish/${{ matrix.rid }}
 
           New-Item -ItemType Directory -Force -Path artifacts/release | Out-Null
@@ -156,13 +174,28 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Prepare package
+        shell: pwsh
         env:
           VERSION: ${{ needs.setup.outputs.version }}
         run: |
-          pwsh -Command "./.github/scripts/Prepare-NpmPackage.ps1 -Version '$env:VERSION' -Repository '${{ github.repository }}'"
+          ./.github/scripts/Prepare-NpmPackage.ps1 -Version $env:VERSION -Repository '${{ github.repository }}'
+
+      # The secrets context is not allowed in step `if` expressions (it fails
+      # the whole workflow at parse time). Probe for the token in a step whose
+      # only output is a boolean; the secret itself stays out of every other step.
+      - name: Check npm token
+        id: npm-token
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Publish to npm
-        if: ${{ secrets.NPM_TOKEN != '' }}
+        if: ${{ steps.npm-token.outputs.present == 'true' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
