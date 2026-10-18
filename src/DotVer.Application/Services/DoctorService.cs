@@ -46,7 +46,9 @@ public sealed class DoctorService : IDoctorService
             fixes.Add($"Environment reconfigured (shims: {TerminalText.Sanitize(bootstrap.ShimsDirectory)}).");
         }
 
-        var inventory = await _inventoryService.ScanAsync(cancellationToken).ConfigureAwait(false);
+        // Config repair destroys state based on what is NOT in the inventory:
+        // it must use a first-hand scan, never the cache.
+        var inventory = await _inventoryService.ScanAsync(forceRefresh: true, cancellationToken).ConfigureAwait(false);
         var config = await _configStore.LoadAsync(cancellationToken).ConfigureAwait(false);
 
         // Never destroy config based on negative evidence from a possibly

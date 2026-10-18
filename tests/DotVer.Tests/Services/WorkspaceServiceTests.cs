@@ -126,6 +126,9 @@ public sealed class WorkspaceServiceTests
         public Task<IReadOnlyList<SdkInstallation>> ScanAsync(CancellationToken cancellationToken) =>
             Task.FromResult(sdks);
 
+        public Task<IReadOnlyList<SdkInstallation>> ScanAsync(bool forceRefresh, CancellationToken cancellationToken) =>
+            ScanAsync(cancellationToken);
+
         public string? GetSystemDotnetPath() => null;
     }
 
@@ -133,6 +136,9 @@ public sealed class WorkspaceServiceTests
     {
         public Task<IReadOnlyList<SdkInstallation>> ScanAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<SdkInstallation>>([.. sdks]);
+
+        public Task<IReadOnlyList<SdkInstallation>> ScanAsync(bool forceRefresh, CancellationToken cancellationToken) =>
+            ScanAsync(cancellationToken);
 
         public string? GetSystemDotnetPath() => null;
 
@@ -163,4 +169,5 @@ public sealed class WorkspaceServiceTests
             throw new NotSupportedException();
     }
 }
+
 

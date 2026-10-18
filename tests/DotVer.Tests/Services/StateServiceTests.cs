@@ -95,6 +95,10 @@ public sealed class StateServiceTests
         public Task<IReadOnlyList<SdkInstallation>> ScanAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<SdkInstallation>>([sdk]);
 
+        public Task<IReadOnlyList<SdkInstallation>> ScanAsync(bool forceRefresh, CancellationToken cancellationToken) =>
+            ScanAsync(cancellationToken);
+
         public string? GetSystemDotnetPath() => null;
     }
 }
+

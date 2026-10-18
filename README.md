@@ -54,6 +54,9 @@ version, set automatically by `exec`) > nearest `global.json` pin > persisted
 `current` (`use`) > persisted `default` > system host. An unmatched
 `DOTVER_VERSION` fails loudly instead of silently selecting another SDK.
 
+Inventory scans are cached under `~/.dotver/cache/` (fingerprint-validated,
+24 h max age). Set `DOTVER_NO_CACHE=1` to disable the cache entirely.
+
 JSON reports (`--json`, schema version 1) include absolute local paths.
 Treat them as local diagnostics; do not paste them into public issues verbatim.
 

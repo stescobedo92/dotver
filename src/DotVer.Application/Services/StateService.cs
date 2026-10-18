@@ -103,7 +103,7 @@ public sealed class StateService : IStateService
     public async Task<UninstallOutcome> UninstallManagedAsync(string token, CancellationToken cancellationToken)
     {
         var config = await _configStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-        var inventory = await _inventoryService.ScanAsync(cancellationToken).ConfigureAwait(false);
+        var inventory = await _inventoryService.ScanAsync(forceRefresh: true, cancellationToken).ConfigureAwait(false);
         var target = _versionResolver.FindByToken(token, config, inventory)
                      ?? inventory.FirstOrDefault(sdk =>
                          sdk.IsManaged &&
@@ -125,9 +125,9 @@ public sealed class StateService : IStateService
             throw new InvalidOperationException($"Only dotver-managed SDKs can be uninstalled. Version received: '{target.Version.Raw}'.");
         }
 
-        // Re-resolve by identity (host root) against a fresh scan so a stale
-        // snapshot can never delete a different build of the same version.
-        var inventory = await _inventoryService.ScanAsync(cancellationToken).ConfigureAwait(false);
+        // Re-resolve by identity (host root) against a fresh, uncached scan
+        // so a stale snapshot can never delete a different build.
+        var inventory = await _inventoryService.ScanAsync(forceRefresh: true, cancellationToken).ConfigureAwait(false);
         var comparison = _environment.IsWindows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         var current = inventory.FirstOrDefault(sdk =>
             sdk.IsManaged && string.Equals(sdk.HostRoot, target.HostRoot, comparison))
@@ -158,7 +158,7 @@ public sealed class StateService : IStateService
 
         // The automatic fallback must never land on a foreign-architecture
         // install (same rule as install auto-selection).
-        var remainingInventory = (await _inventoryService.ScanAsync(cancellationToken).ConfigureAwait(false))
+        var remainingInventory = (await _inventoryService.ScanAsync(forceRefresh: true, cancellationToken).ConfigureAwait(false))
             .Where(sdk => sdk.IsManaged && Architectures.MatchesHost(sdk.Architecture, _environment.RuntimeArchitecture))
             .OrderByDescending(static sdk => sdk.Version)
             .ToList();

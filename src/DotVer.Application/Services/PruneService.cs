@@ -23,7 +23,7 @@ public sealed class PruneService : IPruneService
 
     public async Task<PruneResult> PruneAsync(bool keepLatestPerChannel, bool execute, CancellationToken cancellationToken)
     {
-        var inventory = await _inventoryService.ScanAsync(cancellationToken).ConfigureAwait(false);
+        var inventory = await _inventoryService.ScanAsync(forceRefresh: true, cancellationToken).ConfigureAwait(false);
         var config = await _stateService.GetConfigAsync(cancellationToken).ConfigureAwait(false);
         var managed = inventory.Where(static sdk => sdk.IsManaged).ToList();
 

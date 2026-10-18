@@ -162,7 +162,11 @@ public sealed class AuditServiceTests
         public Task<IReadOnlyList<SdkInstallation>> ScanAsync(CancellationToken cancellationToken) =>
             Task.FromResult(sdks);
 
+        public Task<IReadOnlyList<SdkInstallation>> ScanAsync(bool forceRefresh, CancellationToken cancellationToken) =>
+            ScanAsync(cancellationToken);
+
         public string? GetSystemDotnetPath() => null;
     }
 
 }
+

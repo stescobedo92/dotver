@@ -131,6 +131,9 @@ public sealed class EnsureServiceTests
         public Task<IReadOnlyList<SdkInstallation>> ScanAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<SdkInstallation>>([.. installations]);
 
+        public Task<IReadOnlyList<SdkInstallation>> ScanAsync(bool forceRefresh, CancellationToken cancellationToken) =>
+            ScanAsync(cancellationToken);
+
         public string? GetSystemDotnetPath() => null;
 
         public void Add(SdkInstallation sdk) => installations.Add(sdk);
@@ -160,5 +163,6 @@ public sealed class EnsureServiceTests
             throw new NotSupportedException();
     }
 }
+
 
 
