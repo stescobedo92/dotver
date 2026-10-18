@@ -345,6 +345,32 @@ public static class JsonReports
         return Root(payload);
     }
 
+    public static string ForMatrix(MatrixResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var items = new JsonArray();
+        foreach (var entry in result.Entries)
+        {
+            items.Add(new JsonObject
+            {
+                ["token"] = entry.Token,
+                ["version"] = entry.Version,
+                ["exitCode"] = entry.ExitCode,
+                ["durationMs"] = entry.DurationMs,
+                ["error"] = entry.Error,
+                ["stdout"] = entry.StandardOutput,
+                ["stderr"] = entry.StandardError
+            });
+        }
+
+        return Root(new JsonObject
+        {
+            ["allSucceeded"] = result.AllSucceeded,
+            ["entries"] = items
+        });
+    }
+
     private static string Root(JsonObject payload)
     {
         var root = new JsonObject { ["schemaVersion"] = SchemaVersion };

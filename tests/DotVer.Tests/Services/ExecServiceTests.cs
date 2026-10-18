@@ -12,7 +12,7 @@ public sealed class ExecServiceTests
         var sdk = sandbox.CreateSdkInstall("8.0.412", isManaged: true);
         var harness = new Harness(sandbox, [sdk], new ProcessResult(7, string.Empty, string.Empty));
 
-        var result = await harness.Service.ExecuteAsync("8.0", ["dotnet", "build", "-c", "Release"], CancellationToken.None);
+        var result = await harness.Service.ExecuteAsync("8.0", ["dotnet", "build", "-c", "Release"], captureOutput: false, CancellationToken.None);
 
         Assert.Equal(7, result.ExitCode);
         var spec = Assert.Single(harness.Process.Invocations);
@@ -31,7 +31,7 @@ public sealed class ExecServiceTests
         var harness = new Harness(sandbox, [], new ProcessResult(0, string.Empty, string.Empty));
 
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => harness.Service.ExecuteAsync("9.0.999", ["dotnet", "--version"], CancellationToken.None));
+            () => harness.Service.ExecuteAsync("9.0.999", ["dotnet", "--version"], captureOutput: false, CancellationToken.None));
         Assert.Empty(harness.Process.Invocations);
     }
 
@@ -43,7 +43,7 @@ public sealed class ExecServiceTests
         var harness = new Harness(sandbox, [sdk], new ProcessResult(0, string.Empty, string.Empty));
 
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => harness.Service.ExecuteAsync("8.0.412", ["definitely-not-a-real-tool-xyz"], CancellationToken.None));
+            () => harness.Service.ExecuteAsync("8.0.412", ["definitely-not-a-real-tool-xyz"], captureOutput: false, CancellationToken.None));
         Assert.Empty(harness.Process.Invocations);
     }
 
@@ -101,3 +101,4 @@ public sealed class ExecServiceTests
         }
     }
 }
+

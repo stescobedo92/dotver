@@ -11,7 +11,7 @@ public static class CompletionScripts
 {
     private const string Commands =
         "dashboard home list ls current use local pin default alias unalias ensure sync install scan " +
-        "audit outdated upgrade list-remote ls-remote uninstall doctor prune register-root exec which shell env completions deactivate";
+        "audit outdated upgrade list-remote ls-remote uninstall doctor prune register-root exec each which shell env completions deactivate";
 
     public static string Render(ShellKind shell) =>
         shell switch
@@ -37,7 +37,7 @@ public static class CompletionScripts
             elseif ($command -in 'use','default') {
                 $candidates = @(dotver __complete tokens 2>$null)
             }
-            elseif ($command -in 'local','pin','exec','which','install','shell','env') {
+            elseif ($command -in 'local','pin','exec','each','which','install','shell','env') {
                 $candidates = @(dotver __complete sdk-tokens 2>$null)
             }
             elseif ($command -in 'uninstall','upgrade') {
@@ -81,7 +81,7 @@ public static class CompletionScripts
             fi
             case "$cmd" in
                 use|default) _dotver_from tokens ;;
-                local|pin|exec|which|install|shell|env) _dotver_from sdk-tokens ;;
+                local|pin|exec|each|which|install|shell|env) _dotver_from sdk-tokens ;;
                 uninstall|upgrade) _dotver_from versions ;;
                 unalias) _dotver_from aliases ;;
                 completions)
@@ -107,7 +107,7 @@ public static class CompletionScripts
                 case "${words[2]}" in
                     use|default)
                         candidates=(${(f)"$(dotver __complete tokens 2>/dev/null)"}) ;;
-                    local|pin|exec|which|install|shell|env)
+                    local|pin|exec|each|which|install|shell|env)
                         candidates=(${(f)"$(dotver __complete sdk-tokens 2>/dev/null)"}) ;;
                     uninstall|upgrade)
                         candidates=(${(f)"$(dotver __complete versions 2>/dev/null)"}) ;;
@@ -126,13 +126,15 @@ public static class CompletionScripts
     private const string Fish = """
         # dotver completion (fish). Save to ~/.config/fish/completions/dotver.fish
         complete -c dotver -f
-        complete -c dotver -n '__fish_use_subcommand' -a 'dashboard home list ls current use local pin default alias unalias ensure sync install scan audit outdated upgrade list-remote ls-remote uninstall doctor prune register-root exec which shell env completions deactivate'
+        complete -c dotver -n '__fish_use_subcommand' -a 'dashboard home list ls current use local pin default alias unalias ensure sync install scan audit outdated upgrade list-remote ls-remote uninstall doctor prune register-root exec each which shell env completions deactivate'
         complete -c dotver -n '__fish_seen_subcommand_from use default' -a '(dotver __complete tokens 2>/dev/null)'
-        complete -c dotver -n '__fish_seen_subcommand_from local pin exec which install shell env' -a '(dotver __complete sdk-tokens 2>/dev/null)'
+        complete -c dotver -n '__fish_seen_subcommand_from local pin exec each which install shell env' -a '(dotver __complete sdk-tokens 2>/dev/null)'
         complete -c dotver -n '__fish_seen_subcommand_from uninstall upgrade' -a '(dotver __complete versions 2>/dev/null)'
         complete -c dotver -n '__fish_seen_subcommand_from unalias' -a '(dotver __complete aliases 2>/dev/null)'
         complete -c dotver -n '__fish_seen_subcommand_from completions' -a 'powershell bash zsh fish'
 
         """;
 }
+
+
 

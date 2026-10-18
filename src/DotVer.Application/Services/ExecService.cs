@@ -4,6 +4,7 @@ namespace DotVer.Application;
 
 public sealed class ExecService : IExecService
 {
+    internal const int MatrixCaptureLimitChars = 65536;
     private readonly IInventoryService _inventoryService;
     private readonly IConfigStore _configStore;
     private readonly IVersionResolver _versionResolver;
@@ -34,7 +35,7 @@ public sealed class ExecService : IExecService
             ?? throw new InvalidOperationException($"No selectable version found for '{Sanitize(token)}'. Run 'dotver install {Sanitize(token)}' first.");
     }
 
-    public async Task<ProcessResult> ExecuteAsync(string token, IReadOnlyList<string> command, CancellationToken cancellationToken)
+    public async Task<ProcessResult> ExecuteAsync(string token, IReadOnlyList<string> command, bool captureOutput, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
         if (command.Count == 0 || string.IsNullOrWhiteSpace(command[0]))
@@ -55,7 +56,8 @@ public sealed class ExecService : IExecService
             [.. command.Skip(1)],
             WorkingDirectory: _environment.CurrentDirectory,
             EnvironmentVariables: environment,
-            InheritStandardIo: true);
+            InheritStandardIo: !captureOutput,
+            MaxCapturedCharsPerStream: captureOutput ? MatrixCaptureLimitChars : null);
 
         return await _processRunner.RunAsync(spec, cancellationToken).ConfigureAwait(false);
     }

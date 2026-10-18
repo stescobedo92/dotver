@@ -5,4 +5,5 @@ public sealed record ProcessSpec(
     IReadOnlyList<string> Arguments,
     string? WorkingDirectory = null,
     IReadOnlyDictionary<string, string?>? EnvironmentVariables = null,
-    bool InheritStandardIo = false);
+    bool InheritStandardIo = false,
+    int? MaxCapturedCharsPerStream = null);

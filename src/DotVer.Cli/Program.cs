@@ -46,13 +46,14 @@ var isAudit = args.Length > 0 && string.Equals(args[0], "audit", StringCompariso
 var isScan = args.Length > 0 && string.Equals(args[0], "scan", StringComparison.OrdinalIgnoreCase);
 var isShell = args.Length > 0 && string.Equals(args[0], "shell", StringComparison.OrdinalIgnoreCase);
 var isEnv = args.Length > 0 && string.Equals(args[0], "env", StringComparison.OrdinalIgnoreCase);
-// For exec, only an immediate `exec --help` is dotver help; later --help belongs to the child.
-var wantsHelp = isExec
+var isEach = args.Length > 0 && string.Equals(args[0], "each", StringComparison.OrdinalIgnoreCase);
+// For exec/each, only an immediate `exec|each --help` is dotver help; later --help belongs to the child.
+var wantsHelp = isExec || isEach
     ? args.Length > 1 && (string.Equals(args[1], "--help", StringComparison.OrdinalIgnoreCase) || string.Equals(args[1], "-h", StringComparison.OrdinalIgnoreCase))
     : args.Contains("--help", StringComparer.OrdinalIgnoreCase) || args.Contains("-h", StringComparer.OrdinalIgnoreCase);
 
 // exec/which/completions resolve directly and must stay side-effect free for scripts.
-if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions && !isAudit && !isScan && !isShell && !isEnv)
+if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions && !isAudit && !isScan && !isShell && !isEnv && !isEach)
 {
     await bootstrap.EnsureConfiguredAsync(CancellationToken.None);
 }
@@ -89,13 +90,80 @@ if (!wantsHelp && isExec)
     try
     {
         var exec = bootstrapProvider.GetRequiredService<IExecService>();
-        var result = await exec.ExecuteAsync(args[1], args.Skip(3).ToArray(), CancellationToken.None);
+        var result = await exec.ExecuteAsync(args[1], args.Skip(3).ToArray(), captureOutput: false, CancellationToken.None);
         return result.ExitCode;
     }
     catch (Exception exception) when (exception is InvalidOperationException or ArgumentException or IOException or System.ComponentModel.Win32Exception)
     {
         Console.Error.WriteLine($"Error: {exception.Message}");
         return 1;
+    }
+}
+
+// `each` is parsed manually like `exec`: everything after `--` is the child's.
+if (!wantsHelp && isEach)
+{
+    var separator = Array.IndexOf(args, "--");
+    var beforeSeparator = separator > 1 ? args[1..separator] : [];
+    var parallel = beforeSeparator.Contains("--parallel", StringComparer.OrdinalIgnoreCase);
+    var eachJson = beforeSeparator.Contains("--json", StringComparer.OrdinalIgnoreCase);
+    var unknownFlag = beforeSeparator.Any(static arg =>
+        arg.StartsWith("-", StringComparison.Ordinal) &&
+        !string.Equals(arg, "--parallel", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(arg, "--json", StringComparison.OrdinalIgnoreCase));
+    var tokens = beforeSeparator
+        .Where(static arg => !arg.StartsWith("-", StringComparison.Ordinal))
+        .SelectMany(static arg => arg.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        .ToList();
+
+    if (separator < 0 || unknownFlag || tokens.Count == 0 || separator == args.Length - 1)
+    {
+        Console.Error.WriteLine("Usage: dotver each <token[,token...]> [--parallel] [--json] -- <command> [args...]");
+        return 2;
+    }
+
+    try
+    {
+        using var eachCancellation = CtrlCCancellation.Create();
+        var matrix = bootstrapProvider.GetRequiredService<IMatrixService>();
+        var result = await matrix.RunAsync(tokens, args.Skip(separator + 1).ToArray(), parallel, eachCancellation.Token);
+
+        if (eachJson)
+        {
+            Console.Out.WriteLine(JsonReports.ForMatrix(result));
+        }
+        else
+        {
+            foreach (var entry in result.Entries)
+            {
+                Console.Out.WriteLine($"=== {entry.Token} => {entry.Version ?? "unresolved"} (exit {(entry.ExitCode?.ToString() ?? "error")}, {entry.DurationMs} ms) ===");
+                if (entry.Error is not null)
+                {
+                    Console.Error.WriteLine(entry.Error);
+                }
+
+                if (entry.StandardOutput.Length > 0)
+                {
+                    Console.Out.Write(entry.StandardOutput);
+                }
+
+                if (entry.StandardError.Length > 0)
+                {
+                    Console.Error.Write(entry.StandardError);
+                }
+            }
+        }
+
+        return result.AllSucceeded ? 0 : 1;
+    }
+    catch (OperationCanceledException)
+    {
+        return 130;
+    }
+    catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
+    {
+        Console.Error.WriteLine($"Error: {exception.Message}");
+        return 2;
     }
 }
 
@@ -170,6 +238,9 @@ app.Configure(config =>
 
     config.AddCommand<ExecCommand>("exec")
         .WithDescription("Runs a command with a specific SDK: dotver exec <version> -- <command> [[args...]]");
+
+    config.AddCommand<EachCommand>("each")
+        .WithDescription("Runs a command across several SDKs: dotver each 8.0,9.0 --parallel --json -- dotnet test");
 
     config.AddCommand<WhichCommand>("which")
         .WithDescription("Prints the dotnet path for a token, or for the active selection.");

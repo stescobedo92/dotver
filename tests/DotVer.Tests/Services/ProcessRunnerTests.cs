@@ -18,6 +18,20 @@ public sealed class ProcessRunnerTests
     }
 
     [Fact]
+    public async Task CaptureMode_WithLimit_KeepsBoundedTailWithMarker()
+    {
+        var runner = new ProcessRunner();
+
+        var result = await runner.RunAsync(
+            new ProcessSpec(DotnetHost(), ["--info"], MaxCapturedCharsPerStream: 64),
+            CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.StartsWith("[truncated]", result.StandardOutput);
+        Assert.True(result.StandardOutput.Length <= 64 + "[truncated]".Length + Environment.NewLine.Length);
+    }
+
+    [Fact]
     public async Task InheritMode_ReturnsExitCodeWithoutCapturedOutput()
     {
         var runner = new ProcessRunner();

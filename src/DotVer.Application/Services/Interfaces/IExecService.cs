@@ -6,5 +6,5 @@ public interface IExecService
 {
     Task<SdkInstallation> ResolveSdkAsync(string token, CancellationToken cancellationToken);
 
-    Task<ProcessResult> ExecuteAsync(string token, IReadOnlyList<string> command, CancellationToken cancellationToken);
+    Task<ProcessResult> ExecuteAsync(string token, IReadOnlyList<string> command, bool captureOutput, CancellationToken cancellationToken);
 }

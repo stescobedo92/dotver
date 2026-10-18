@@ -113,7 +113,7 @@ public sealed class ShellEnvTests
         public Task<SdkInstallation> ResolveSdkAsync(string token, CancellationToken cancellationToken) =>
             Task.FromResult(sdk);
 
-        public Task<ProcessResult> ExecuteAsync(string token, IReadOnlyList<string> command, CancellationToken cancellationToken) =>
+        public Task<ProcessResult> ExecuteAsync(string token, IReadOnlyList<string> command, bool captureOutput, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
     }
 
@@ -128,3 +128,4 @@ public sealed class ShellEnvTests
         }
     }
 }
+
