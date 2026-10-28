@@ -32,7 +32,9 @@ dotver local --clear         # remove this directory's pin (--parent for a paren
 dotver ensure [--use]        # install the SDK pinned by global.json if missing
 dotver scan [PATH] [--ensure [--dry-run]] [--json]   # every pin in a tree; --ensure installs what is missing
 dotver alias lts 8.0.412     # reserved names (system/current/default/latest) are rejected
-dotver install 10.0.201 [--no-use] [--no-default]
+dotver install 10.0.201 [--no-use] [--no-default] [--no-tools]
+dotver tools add dotnet-ef [--version 8.0.0]   # global tools re-installed after every install
+dotver tools list | remove <id> | sync [token]
 dotver install 8.0
 dotver install lts
 dotver install 8.0.412 --arch arm64        # cross-arch: installs/<version>--<arch>
@@ -245,6 +247,29 @@ $ dotver doctor --json                           # non-zero exit while issues re
 
 Every `--json` report carries `"schemaVersion": 1` and is written to raw
 stdout (no terminal wrapping), so it is safe to pipe into `jq` or a CI parser.
+
+### Keep global tools across SDKs
+
+Global tools (`dotnet tool install -g`) are restored against the runtime of
+the SDK that installed them, so switching SDKs often leaves `dotnet-ef` or
+`dotnet-format` broken. Record them once and dotver re-installs them with
+every SDK it installs, like `default-packages` in nvm:
+
+```bash
+$ dotver tools add dotnet-ef --version 8.0.0
+$ dotver tools add dotnet-format
+$ dotver install 9.0            # ... then runs `dotnet tool update --global` for each recorded tool
+$ dotver tools sync 8.0         # do it now for an already installed SDK
+```
+
+The manifest lives in `~/.dotver/tools.json`; `--no-tools` skips the sync for
+one install, and failures are reported without failing the install.
+
+Hooks: an executable `~/.dotver/hooks/post-install` (on Windows
+`post-install.ps1`, `.cmd`, `.bat` or `.exe`) runs after every new SDK
+install with `DOTVER_EVENT`, `DOTVER_VERSION`, `DOTNET_ROOT`,
+`DOTVER_SDK_ROOT` and `DOTVER_HOME` in its environment. Its exit code and
+output are reported; a failing hook never aborts the install.
 
 ### Point your IDE at the selected SDK
 

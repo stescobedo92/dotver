@@ -50,13 +50,14 @@ var isShell = args.Length > 0 && string.Equals(args[0], "shell", StringCompariso
 var isEnv = args.Length > 0 && string.Equals(args[0], "env", StringComparison.OrdinalIgnoreCase);
 var isEach = args.Length > 0 && string.Equals(args[0], "each", StringComparison.OrdinalIgnoreCase);
 var isExplain = args.Length > 0 && string.Equals(args[0], "explain", StringComparison.OrdinalIgnoreCase);
+var isTools = args.Length > 0 && string.Equals(args[0], "tools", StringComparison.OrdinalIgnoreCase);
 // For exec/each, only an immediate `exec|each --help` is dotver help; later --help belongs to the child.
 var wantsHelp = isExec || isEach
     ? args.Length > 1 && (string.Equals(args[1], "--help", StringComparison.OrdinalIgnoreCase) || string.Equals(args[1], "-h", StringComparison.OrdinalIgnoreCase))
     : args.Contains("--help", StringComparer.OrdinalIgnoreCase) || args.Contains("-h", StringComparer.OrdinalIgnoreCase);
 
 // exec/which/completions resolve directly and must stay side-effect free for scripts.
-if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions && !isAudit && !isScan && !isShell && !isEnv && !isEach && !isExplain)
+if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions && !isAudit && !isScan && !isShell && !isEnv && !isEach && !isExplain && !isTools)
 {
     await bootstrap.EnsureConfiguredAsync(CancellationToken.None);
 }
@@ -215,7 +216,16 @@ app.Configure(config =>
         .WithDescription("Scans a directory tree for global.json pins and reports which are satisfied; --ensure installs the missing SDKs (--dry-run only lists them). Exits non-zero if any pin is missing.");
 
     config.AddCommand<InstallCommand>("install")
-        .WithDescription("Installs an isolated SDK using the official .NET install script.");
+        .WithDescription("Installs an isolated SDK using the official .NET install script, then syncs recorded global tools (--no-tools skips) and runs the post-install hook.");
+
+    config.AddBranch("tools", tools =>
+    {
+        tools.SetDescription("Global dotnet tools to keep installed for every SDK (~/.dotver/tools.json).");
+        tools.AddCommand<ToolsListCommand>("list").WithDescription("Lists the recorded tools.");
+        tools.AddCommand<ToolsAddCommand>("add").WithDescription("Records a tool: dotver tools add dotnet-ef [[--version 8.0.0]]");
+        tools.AddCommand<ToolsRemoveCommand>("remove").WithDescription("Forgets a tool (does not uninstall it).");
+        tools.AddCommand<ToolsSyncCommand>("sync").WithDescription("Installs/updates every recorded tool with an SDK: dotver tools sync [[token]]");
+    });
 
     config.AddCommand<AuditCommand>("audit")
         .WithDescription("Reports installed SDKs missing published security fixes (CVE). Exit 1 if vulnerable, 2 if any could not be verified.");

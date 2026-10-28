@@ -18,4 +18,7 @@ internal sealed class InstallSettings : CommandSettings
 
     [CommandOption("--runtime <RUNTIME>")]
     public string? Runtime { get; init; }
+
+    [CommandOption("--no-tools")]
+    public bool NoTools { get; init; }
 }

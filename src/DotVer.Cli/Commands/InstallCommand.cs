@@ -11,19 +11,25 @@ internal sealed class InstallCommand : AsyncCommandBase<InstallSettings>
     private readonly IStateService _stateService;
     private readonly IEnvironmentBootstrapService _bootstrapService;
     private readonly IEnvironmentContext _environment;
+    private readonly IToolSyncService _toolSync;
+    private readonly IHookRunner _hooks;
 
     public InstallCommand(
         IAnsiConsole console,
         IInstallService installService,
         IStateService stateService,
         IEnvironmentBootstrapService bootstrapService,
-        IEnvironmentContext environment)
+        IEnvironmentContext environment,
+        IToolSyncService toolSync,
+        IHookRunner hooks)
         : base(console)
     {
         _installService = installService;
         _stateService = stateService;
         _bootstrapService = bootstrapService;
         _environment = environment;
+        _toolSync = toolSync;
+        _hooks = hooks;
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, InstallSettings settings)
@@ -53,6 +59,8 @@ internal sealed class InstallCommand : AsyncCommandBase<InstallSettings>
         InstallOutcome? outcome = null;
         EnvironmentBootstrapResult? bootstrap = null;
         SdkInstallation? selected = null;
+        ToolSyncResult? toolSync = null;
+        HookRunResult? hook = null;
 
         await Console.Progress()
             .AutoClear(false)
@@ -95,6 +103,20 @@ internal sealed class InstallCommand : AsyncCommandBase<InstallSettings>
                 var bootstrapTask = ctx.AddTask("[green]Configuring shims, PATH and profiles[/]");
                 bootstrap = await _bootstrapService.EnsureConfiguredAsync(CancellationToken.None).ConfigureAwait(false);
                 bootstrapTask.Value = 100;
+
+                // A fresh SDK gets the recorded global tools and the post-install
+                // hook; a no-op re-install skips both.
+                if (!outcome.WasAlreadyInstalled)
+                {
+                    if (!settings.NoTools)
+                    {
+                        var toolsTask = ctx.AddTask("[green]Syncing global tools[/]");
+                        toolSync = await _toolSync.SyncAsync(outcome.Installation, CancellationToken.None).ConfigureAwait(false);
+                        toolsTask.Value = 100;
+                    }
+
+                    hook = await _hooks.RunAsync("post-install", outcome.Installation, CancellationToken.None).ConfigureAwait(false);
+                }
             }).ConfigureAwait(false);
 
         var effectiveConfig = await _stateService.GetConfigAsync(CancellationToken.None).ConfigureAwait(false);
@@ -114,11 +136,37 @@ internal sealed class InstallCommand : AsyncCommandBase<InstallSettings>
         summary.AddRow(new Text("Shims"), new Text(TerminalText.Sanitize(bootstrap!.ShimsDirectory)));
         summary.AddRow("Persistent PATH", bootstrap.PersistentPathUpdated ? "updated" : "already configured");
         summary.AddRow("Process PATH", bootstrap.ProcessPathUpdated ? "updated" : "already configured");
+        if (toolSync is not null)
+        {
+            var toolsSummary = toolSync.Tools.Count == 0
+                ? "none configured"
+                : (toolSync.Tools.Count - toolSync.Failed) + " synced, " + toolSync.Failed + " failed";
+            summary.AddRow(new Text("Global tools"), new Text(toolsSummary));
+        }
+
+        if (hook is not null && hook.Ran)
+        {
+            summary.AddRow(new Text("post-install hook"), new Text(hook.ExitCode == 0 ? "ran" : "failed (exit " + hook.ExitCode + ")"));
+        }
+
         Console.Write(summary);
 
         foreach (var note in bootstrap.Notes)
         {
             Console.MarkupLine($"[grey]-[/] {Markup.Escape(note)}");
+        }
+
+        if (toolSync is not null)
+        {
+            foreach (var tool in toolSync.Tools.Where(static tool => !tool.Succeeded))
+            {
+                Console.MarkupLine($"[yellow]Tool {Markup.Escape(tool.Id)} failed:[/] {Markup.Escape(tool.Error ?? "exit " + tool.ExitCode)}");
+            }
+        }
+
+        if (hook is not null && hook.Ran && hook.ExitCode != 0)
+        {
+            Console.MarkupLine($"[yellow]post-install hook failed (exit {hook.ExitCode}):[/] {Markup.Escape(TerminalText.Sanitize(hook.Output ?? string.Empty))}");
         }
 
         return 0;

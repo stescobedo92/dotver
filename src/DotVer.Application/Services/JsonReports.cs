@@ -109,6 +109,45 @@ public static class JsonReports
         });
     }
 
+    public static string ForToolsManifest(ToolsManifest manifest, string filePath)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+
+        var tools = new JsonArray();
+        foreach (var tool in manifest.Tools)
+        {
+            tools.Add(new JsonObject { ["id"] = tool.Id, ["version"] = tool.Version });
+        }
+
+        return Root(new JsonObject { ["filePath"] = filePath, ["tools"] = tools });
+    }
+
+    public static string ForToolSync(ToolSyncResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var tools = new JsonArray();
+        foreach (var tool in result.Tools)
+        {
+            tools.Add(new JsonObject
+            {
+                ["id"] = tool.Id,
+                ["version"] = tool.Version,
+                ["succeeded"] = tool.Succeeded,
+                ["exitCode"] = tool.ExitCode,
+                ["error"] = tool.Error
+            });
+        }
+
+        return Root(new JsonObject
+        {
+            ["sdkVersion"] = result.Sdk.Version.Raw,
+            ["hostRoot"] = result.Sdk.HostRoot,
+            ["failed"] = result.Failed,
+            ["tools"] = tools
+        });
+    }
+
     public static string ForRemote(IReadOnlyList<ReleaseChannel> channels)
     {
         ArgumentNullException.ThrowIfNull(channels);
