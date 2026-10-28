@@ -21,6 +21,7 @@
 dotver
 dotver list [--managed-only] [--json]
 dotver current [--json]
+dotver explain [--json]      # every step of the selection chain and why it won or lost
 dotver use 8.0.412
 dotver use system            # clear the persisted current version
 dotver deactivate            # same as `use system`
@@ -54,6 +55,9 @@ Selection precedence for the active SDK is: `DOTVER_VERSION` (exact installed
 version, set automatically by `exec`) > nearest `global.json` pin > persisted
 `current` (`use`) > persisted `default` > system host. An unmatched
 `DOTVER_VERSION` fails loudly instead of silently selecting another SDK.
+`dotver explain` prints that chain step by step (selected, overridden,
+unmatched, skipped) with the reason for each, which is the first thing to run
+when "dotnet is picking the wrong SDK".
 
 Inventory scans are cached under `~/.dotver/cache/` (fingerprint-validated,
 24 h max age). Set `DOTVER_NO_CACHE=1` to disable the cache entirely.

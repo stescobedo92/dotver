@@ -10,7 +10,7 @@ namespace DotVer.Application;
 public static class CompletionScripts
 {
     private const string Commands =
-        "dashboard home list ls current use local pin default alias unalias ensure sync install scan " +
+        "dashboard home list ls current explain use local pin default alias unalias ensure sync install scan " +
         "audit outdated upgrade list-remote ls-remote uninstall doctor prune register-root exec each which shell env info completions deactivate";
 
     public static string Render(ShellKind shell) =>
@@ -126,7 +126,7 @@ public static class CompletionScripts
     private const string Fish = """
         # dotver completion (fish). Save to ~/.config/fish/completions/dotver.fish
         complete -c dotver -f
-        complete -c dotver -n '__fish_use_subcommand' -a 'dashboard home list ls current use local pin default alias unalias ensure sync install scan audit outdated upgrade list-remote ls-remote uninstall doctor prune register-root exec each which shell env info completions deactivate'
+        complete -c dotver -n '__fish_use_subcommand' -a 'dashboard home list ls current explain use local pin default alias unalias ensure sync install scan audit outdated upgrade list-remote ls-remote uninstall doctor prune register-root exec each which shell env info completions deactivate'
         complete -c dotver -n '__fish_seen_subcommand_from use default' -a '(dotver __complete tokens 2>/dev/null)'
         complete -c dotver -n '__fish_seen_subcommand_from local pin exec each which install shell env info' -a '(dotver __complete sdk-tokens 2>/dev/null)'
         complete -c dotver -n '__fish_seen_subcommand_from uninstall upgrade' -a '(dotver __complete versions 2>/dev/null)'

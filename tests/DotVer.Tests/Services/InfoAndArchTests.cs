@@ -171,6 +171,9 @@ public sealed class InfoAndArchTests
     {
         public Task<SdkSelection> ResolveAsync(CancellationToken cancellationToken) =>
             throw new NotSupportedException();
+
+        public Task<SelectionTrace> ExplainAsync(CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 
     private sealed class FakeExec(SdkInstallation sdk) : IExecService

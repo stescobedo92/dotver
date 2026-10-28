@@ -24,6 +24,8 @@ public sealed partial class GlobalJsonService : IGlobalJsonService
         return candidate is null ? null : TryRead(candidate);
     }
 
+    public string? FindNearest(string workingDirectory) => FindFileUpward(Path.GetFullPath(workingDirectory));
+
     public GlobalJsonRequest? TryRead(string filePath) => Read(filePath).Request;
 
     public GlobalJsonReadResult Read(string filePath)

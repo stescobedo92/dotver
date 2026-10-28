@@ -49,13 +49,14 @@ var isScan = args.Length > 0 && string.Equals(args[0], "scan", StringComparison.
 var isShell = args.Length > 0 && string.Equals(args[0], "shell", StringComparison.OrdinalIgnoreCase);
 var isEnv = args.Length > 0 && string.Equals(args[0], "env", StringComparison.OrdinalIgnoreCase);
 var isEach = args.Length > 0 && string.Equals(args[0], "each", StringComparison.OrdinalIgnoreCase);
+var isExplain = args.Length > 0 && string.Equals(args[0], "explain", StringComparison.OrdinalIgnoreCase);
 // For exec/each, only an immediate `exec|each --help` is dotver help; later --help belongs to the child.
 var wantsHelp = isExec || isEach
     ? args.Length > 1 && (string.Equals(args[1], "--help", StringComparison.OrdinalIgnoreCase) || string.Equals(args[1], "-h", StringComparison.OrdinalIgnoreCase))
     : args.Contains("--help", StringComparer.OrdinalIgnoreCase) || args.Contains("-h", StringComparer.OrdinalIgnoreCase);
 
 // exec/which/completions resolve directly and must stay side-effect free for scripts.
-if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions && !isAudit && !isScan && !isShell && !isEnv && !isEach)
+if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions && !isAudit && !isScan && !isShell && !isEnv && !isEach && !isExplain)
 {
     await bootstrap.EnsureConfiguredAsync(CancellationToken.None);
 }
@@ -186,6 +187,9 @@ app.Configure(config =>
 
     config.AddCommand<CurrentCommand>("current")
         .WithDescription("Shows the active version.");
+
+    config.AddCommand<ExplainCommand>("explain")
+        .WithDescription("Shows the whole selection chain (DOTVER_VERSION, global.json, current, default, system) and why each step won or lost.");
 
     config.AddCommand<UseCommand>("use")
         .WithDescription("Sets the current version.");

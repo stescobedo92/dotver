@@ -52,6 +52,30 @@ public sealed class JsonReportsTests
     }
 
     [Fact]
+    public void ForExplain_EmitsStepsAndWinner()
+    {
+        using var sandbox = new TestSandbox(TestPlatform.Windows);
+        var sdk = sandbox.CreateSdkInstall("8.0.412", isManaged: true);
+        var trace = new SelectionTrace(
+            [
+                new SelectionStep("DOTVER_VERSION", null, "skipped", "Not set.", Winner: false),
+                new SelectionStep("current", "8.0.412", "selected", "Installed.", Winner: true)
+            ],
+            new SdkSelection(sdk, "Selected by persisted 'use' (8.0.412)", false),
+            Error: null);
+
+        var json = JsonReports.ForExplain(trace);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal(1, doc.RootElement.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("current", doc.RootElement.GetProperty("winner").GetProperty("source").GetString());
+        Assert.Equal("8.0.412", doc.RootElement.GetProperty("winner").GetProperty("version").GetString());
+        Assert.Equal(2, doc.RootElement.GetProperty("steps").GetArrayLength());
+        Assert.True(doc.RootElement.GetProperty("steps")[1].GetProperty("winner").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("error").ValueKind);
+    }
+
+    [Fact]
     public void ForDoctor_IncludesWarningsAliasesAndCounts()
     {
         using var sandbox = new TestSandbox(TestPlatform.Windows);

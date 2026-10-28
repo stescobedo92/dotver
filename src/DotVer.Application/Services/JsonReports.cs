@@ -56,6 +56,39 @@ public static class JsonReports
         });
     }
 
+    public static string ForExplain(SelectionTrace trace)
+    {
+        ArgumentNullException.ThrowIfNull(trace);
+
+        var steps = new JsonArray();
+        foreach (var step in trace.Steps)
+        {
+            steps.Add(new JsonObject
+            {
+                ["source"] = step.Source,
+                ["value"] = step.Value,
+                ["outcome"] = step.Outcome,
+                ["detail"] = step.Detail,
+                ["winner"] = step.Winner
+            });
+        }
+
+        var winner = trace.Steps.FirstOrDefault(static step => step.Winner);
+        return Root(new JsonObject
+        {
+            ["winner"] = new JsonObject
+            {
+                ["source"] = winner?.Source,
+                ["version"] = trace.Selection.Installation?.Version.Raw,
+                ["reason"] = trace.Selection.Reason,
+                ["hostRoot"] = trace.Selection.Installation?.HostRoot,
+                ["dotnetPath"] = trace.Selection.Installation?.DotnetPath
+            },
+            ["steps"] = steps,
+            ["error"] = trace.Error
+        });
+    }
+
     public static string ForRemote(IReadOnlyList<ReleaseChannel> channels)
     {
         ArgumentNullException.ThrowIfNull(channels);
