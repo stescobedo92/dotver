@@ -113,7 +113,8 @@ public sealed class EnvironmentBootstrapServiceTests
         try
         {
             // What a REG_EXPAND_SZ user PATH looks like when read unexpanded.
-            var rawPath = "%" + variable + @"%;C:\other";
+            // The service splits with the host separator, so the test must too.
+            var rawPath = "%" + variable + "%" + Path.PathSeparator + @"C:\other";
             environment.SetUserEnvironmentVariable("PATH", rawPath);
             var bootstrap = new EnvironmentBootstrapService(paths, environment, new ShimService(paths, environment));
 
