@@ -8,8 +8,8 @@
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <AnalysisLevel>latest</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-    <RepositoryUrl>https://github.com/OWNER/REPO</RepositoryUrl>
-    <PackageProjectUrl>https://github.com/OWNER/REPO</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/stescobedo92/dotver</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/stescobedo92/dotver</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Authors>stesc</Authors>
     <Company>DotVer</Company>

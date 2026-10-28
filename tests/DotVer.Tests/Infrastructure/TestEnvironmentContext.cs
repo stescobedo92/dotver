@@ -26,6 +26,7 @@ internal sealed class TestEnvironmentContext : IEnvironmentContext
     public bool IsLinux => _platform == TestPlatform.Linux;
     public bool IsMacOS => _platform == TestPlatform.MacOS;
     public string RuntimeArchitecture => "x64";
+    public string ProductVersion { get; set; } = "0.0.0-test";
 
     public IReadOnlyList<string> GetPathEntries()
     {
@@ -72,5 +73,11 @@ internal sealed class TestEnvironmentContext : IEnvironmentContext
     {
         UserVariableWrites++;
         _variables[name] = value;
+    }
+
+    public void DeleteUserEnvironmentVariable(string name)
+    {
+        UserVariableWrites++;
+        _variables.Remove(name);
     }
 }

@@ -168,6 +168,76 @@ public static class JsonReports
         });
     }
 
+    public static string ForSelfUpdateCheck(SelfUpdateCheck check)
+    {
+        ArgumentNullException.ThrowIfNull(check);
+
+        return Root(new JsonObject
+        {
+            ["currentVersion"] = check.CurrentVersion,
+            ["latestVersion"] = check.LatestVersion,
+            ["tag"] = check.Tag,
+            ["updateAvailable"] = check.UpdateAvailable,
+            ["assetName"] = check.AssetName,
+            ["executablePath"] = check.ExecutablePath,
+            ["canSelfUpdate"] = check.CanSelfUpdate,
+            ["reason"] = check.Reason
+        });
+    }
+
+    public static string ForSelfUpdate(SelfUpdateOutcome outcome)
+    {
+        ArgumentNullException.ThrowIfNull(outcome);
+
+        return Root(new JsonObject
+        {
+            ["fromVersion"] = outcome.FromVersion,
+            ["toVersion"] = outcome.ToVersion,
+            ["updated"] = outcome.Updated,
+            ["executablePath"] = outcome.ExecutablePath,
+            ["assetName"] = outcome.AssetName,
+            ["sha256"] = outcome.Sha256,
+            ["note"] = outcome.Note
+        });
+    }
+
+    public static string ForSelfUninstall(SelfUninstallOutcome outcome)
+    {
+        ArgumentNullException.ThrowIfNull(outcome);
+
+        static JsonArray Strings(IEnumerable<string> values)
+        {
+            var array = new JsonArray();
+            foreach (var value in values)
+            {
+                array.Add(value);
+            }
+
+            return array;
+        }
+
+        var plan = outcome.Plan;
+        return Root(new JsonObject
+        {
+            ["executed"] = outcome.Executed,
+            ["plan"] = new JsonObject
+            {
+                ["profilesToClean"] = Strings(plan.ProfilesToClean),
+                ["directoriesToDelete"] = Strings(plan.DirectoriesToDelete),
+                ["filesToDelete"] = Strings(plan.FilesToDelete),
+                ["removeUserPathEntry"] = plan.RemoveUserPathEntry,
+                ["removeUserVariables"] = plan.RemoveUserVariables,
+                ["binaryPath"] = plan.BinaryPath,
+                ["binaryRemovalHint"] = plan.BinaryRemovalHint
+            },
+            ["profilesCleaned"] = Strings(outcome.Environment?.ProfilesCleaned ?? []),
+            ["userPathUpdated"] = outcome.Environment?.UserPathUpdated ?? false,
+            ["userVariablesRemoved"] = outcome.Environment?.UserVariablesRemoved ?? false,
+            ["deleted"] = Strings(outcome.Deleted),
+            ["errors"] = Strings(outcome.Errors)
+        });
+    }
+
     public static string ForRemote(IReadOnlyList<ReleaseChannel> channels)
     {
         ArgumentNullException.ThrowIfNull(channels);

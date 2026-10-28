@@ -68,6 +68,165 @@ public sealed class EnvironmentBootstrapService : IEnvironmentBootstrapService
         return new EnvironmentBootstrapResult(_paths.Shims, persistentPathUpdated, processPathUpdated, profilesUpdated, notes);
     }
 
+    public IReadOnlyList<string> FindConfiguredProfiles()
+    {
+        var record = BootstrapRecord.Load(RecordPath);
+        var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var profile in record.Profiles)
+        {
+            candidates.Add(profile);
+        }
+
+        foreach (var profile in CandidateProfiles())
+        {
+            candidates.Add(profile);
+        }
+
+        return candidates
+            .Where(ContainsBlock)
+            .OrderBy(static profile => profile, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    public Task<EnvironmentRemovalResult> RemoveAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var cleaned = new List<string>();
+        var notes = new List<string>();
+
+        foreach (var profile in FindConfiguredProfiles())
+        {
+            if (RemoveBlock(profile))
+            {
+                cleaned.Add(profile);
+            }
+        }
+
+        var pathUpdated = false;
+        var variablesRemoved = false;
+        if (_environment.IsWindows)
+        {
+            var userPath = _environment.GetUserEnvironmentVariable("PATH") ?? string.Empty;
+            var entries = userPath.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var kept = entries.Where(entry => !IsShimsDirectory(Environment.ExpandEnvironmentVariables(entry))).ToList();
+            if (kept.Count != entries.Length)
+            {
+                if (kept.Count == 0)
+                {
+                    _environment.DeleteUserEnvironmentVariable("PATH");
+                }
+                else
+                {
+                    _environment.SetUserEnvironmentVariable("PATH", string.Join(Path.PathSeparator, kept));
+                }
+
+                pathUpdated = true;
+            }
+
+            if (string.Equals(_environment.GetUserEnvironmentVariable("DOTVER_HOME"), _paths.Home, StringComparison.OrdinalIgnoreCase))
+            {
+                _environment.DeleteUserEnvironmentVariable("DOTVER_HOME");
+                variablesRemoved = true;
+            }
+
+            notes.Add("Open a new terminal for the PATH change to apply.");
+        }
+
+        try
+        {
+            if (File.Exists(RecordPath))
+            {
+                File.Delete(RecordPath);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            notes.Add($"Could not delete {RecordPath}: {exception.Message}");
+        }
+
+        return Task.FromResult(new EnvironmentRemovalResult(cleaned, pathUpdated, variablesRemoved, notes));
+    }
+
+    private IEnumerable<string> CandidateProfiles()
+    {
+        if (_environment.IsWindows)
+        {
+            yield return Path.Combine(_environment.DocumentsDirectory, "PowerShell", "Microsoft.PowerShell_profile.ps1");
+            yield return Path.Combine(_environment.DocumentsDirectory, "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1");
+            yield break;
+        }
+
+        yield return Path.Combine(_environment.HomeDirectory, ".profile");
+        yield return Path.Combine(_environment.HomeDirectory, ".bashrc");
+        yield return Path.Combine(_environment.HomeDirectory, ".zshrc");
+        yield return Path.Combine(_environment.HomeDirectory, ".config", "fish", "config.fish");
+    }
+
+    // Only a block that points at THIS DOTVER_HOME counts: with a custom
+    // DOTVER_HOME, blocks of another dotver installation are left alone.
+    private bool ContainsBlock(string profile)
+    {
+        var target = ResolveWriteTarget(profile);
+        try
+        {
+            return File.Exists(target) && FindOwnBlock(File.ReadAllText(target), out _, out _);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private bool FindOwnBlock(string existing, out int startIdx, out int endIdx)
+    {
+        startIdx = existing.IndexOf(MarkerStart, StringComparison.Ordinal);
+        endIdx = startIdx < 0 ? -1 : existing.IndexOf(MarkerEnd, startIdx, StringComparison.Ordinal);
+        if (startIdx < 0 || endIdx < 0)
+        {
+            return false;
+        }
+
+        var comparison = _environment.IsWindows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        return existing[startIdx..endIdx].Contains(_paths.Env, comparison);
+    }
+
+    private bool RemoveBlock(string profile)
+    {
+        var target = ResolveWriteTarget(profile);
+        string existing;
+        try
+        {
+            existing = File.Exists(target) ? File.ReadAllText(target) : string.Empty;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+
+        if (!FindOwnBlock(existing, out var startIdx, out var endIdx))
+        {
+            return false;
+        }
+
+        var endOfBlock = endIdx + MarkerEnd.Length;
+        if (endOfBlock < existing.Length && existing[endOfBlock] == '\r') endOfBlock++;
+        if (endOfBlock < existing.Length && existing[endOfBlock] == '\n') endOfBlock++;
+
+        // The block was appended after a separator newline when the file did
+        // not end with one: drop that blank line too, never the user's own.
+        var before = existing[..startIdx];
+        if (TrailingNewlineLength(before) is > 0 and var separator && TrailingNewlineLength(before[..^separator]) > 0)
+        {
+            before = before[..^separator];
+        }
+
+        WriteAtomically(target, before + existing[endOfBlock..]);
+        return true;
+    }
+
+    private static int TrailingNewlineLength(string text) =>
+        text.EndsWith("\r\n", StringComparison.Ordinal) ? 2 : text.EndsWith('\n') ? 1 : 0;
+
     private bool IsOptedOut()
     {
         var value = _environment.GetEnvironmentVariable(OptOutVariable)?.Trim();
@@ -351,6 +510,8 @@ public sealed class EnvironmentBootstrapService : IEnvironmentBootstrapService
 
             return record;
         }
+
+        public IEnumerable<string> Profiles => _configuredProfiles;
 
         public bool Contains(string profile) => _configuredProfiles.Contains(profile);
 

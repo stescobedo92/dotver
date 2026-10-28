@@ -53,6 +53,8 @@ dotver doctor [--fix] [--json]   # exits non-zero while issues remain
 dotver prune [--keep-latest-per-channel --yes] [--json]  # dry-run unless --yes
 dotver completions powershell|bash|zsh|fish
 dotver register-root /custom/dotnet
+dotver self-update [--check] [--version 0.4.0]   # replace the binary from a verified GitHub release
+dotver self-uninstall [--yes] [--keep-sdks]      # undo shims, profiles, PATH, registry and ~/.dotver
 ```
 
 Selection precedence for the active SDK is: `DOTVER_VERSION` (exact installed
@@ -343,6 +345,37 @@ dotver completions fish > ~/.config/fish/completions/dotver.fish
 
 Completions suggest commands plus installed versions and aliases for
 version-taking commands (`use`, `local`, `exec`, `install`, `upgrade`, …).
+
+### Update or remove dotver itself
+
+```bash
+$ dotver self-update --check
+Installed: 0.3.0  Latest: 0.4.0 (v0.4.0)
+An update is available. Run dotver self-update to install it.
+
+$ dotver self-update
+Updated 0.3.0 -> 0.4.0
+  ~/.local/bin/dotver  (dotver-linux-x64, sha256 81f9...)
+```
+
+`self-update` downloads the asset for this platform from the GitHub release,
+verifies it against the release's `checksums.txt` and atomically replaces the
+running binary (on Windows the previous image is parked as `dotver.exe.old`).
+It only applies to the standalone binary; npm and WinGet installs are updated
+through their package manager. `DOTVER_UPDATE_REPOSITORY=owner/repo` points
+a fork at its own releases.
+
+```bash
+$ dotver self-uninstall             # dry run: shows every profile, PATH entry, registry value and directory it would touch
+$ dotver self-uninstall --yes       # removes them all, including ~/.dotver
+$ dotver self-uninstall --yes --keep-sdks   # same, but keeps installs/ and runtimes/
+```
+
+The uninstall removes the dotver blocks from your shell profiles (through
+symlinks, keeping everything else), the shims entry from the Windows user
+`PATH` and the `DOTVER_HOME` user variable, and then `~/.dotver`. The binary
+itself cannot delete its running image, so the last line tells you how to
+remove it for the way it was installed.
 
 ### Install via npm (no .NET required)
 

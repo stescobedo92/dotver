@@ -50,6 +50,17 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IHookRunner, HookRunner>();
         services.AddSingleton<IDownloadSources, ConfigDownloadSources>();
         services.AddSingleton<IMirrorService, MirrorService>();
+        services.AddSingleton<ISelfUpdateService, SelfUpdateService>();
+        services.AddSingleton<ISelfUninstallService, SelfUninstallService>();
+
+        // dotver's own releases: GitHub API + asset CDN only, redirects validated hop by hop.
+        services.AddHttpClient<IReleaseFeed, GitHubReleaseFeed>()
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            {
+                AllowAutoRedirect = false,
+                UseProxy = true,
+                Proxy = HttpClient.DefaultProxy
+            });
 
         // Dedicated metadata client: redirects are never followed, so a
         // poisoned endpoint cannot bounce requests to internal services.

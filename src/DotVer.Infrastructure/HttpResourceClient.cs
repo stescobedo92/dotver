@@ -30,14 +30,22 @@ public sealed class HttpResourceClient : IHttpResourceClient
     private readonly HttpClient _httpClient;
     private readonly long _maxResponseBytes;
     private readonly IDownloadSources? _sources;
+    private readonly IReadOnlyCollection<string> _baseAllowedHosts;
 
-    public HttpResourceClient(HttpClient httpClient, long maxResponseBytes = DefaultMaxResponseBytes, IDownloadSources? sources = null)
+    public HttpResourceClient(
+        HttpClient httpClient,
+        long maxResponseBytes = DefaultMaxResponseBytes,
+        IDownloadSources? sources = null,
+        IReadOnlyCollection<string>? allowedHosts = null)
     {
         _httpClient = httpClient;
         _maxResponseBytes = maxResponseBytes;
         _sources = sources;
+        _baseAllowedHosts = allowedHosts ?? AllowedHosts;
         _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("dotver", "1.0.0"));
     }
+
+    public Task<byte[]> GetBytesAsync(string url, CancellationToken cancellationToken) => FetchAsync(url, cancellationToken);
 
     public async Task<string> GetStringAsync(string url, CancellationToken cancellationToken)
     {
@@ -57,8 +65,8 @@ public sealed class HttpResourceClient : IHttpResourceClient
     {
         // A configured mirror widens the allow-list by exactly its own host(s).
         var allowedHosts = _sources is null
-            ? AllowedHosts
-            : AllowedHosts.Concat((await _sources.ResolveAsync(cancellationToken).ConfigureAwait(false)).ExtraAllowedHosts).ToArray();
+            ? _baseAllowedHosts
+            : _baseAllowedHosts.Concat((await _sources.ResolveAsync(cancellationToken).ConfigureAwait(false)).ExtraAllowedHosts).ToArray();
         var uri = ValidateUri(url, "requested URL", allowedHosts);
         for (var hop = 0; ; hop++)
         {

@@ -212,6 +212,11 @@ public sealed class DoctorPruneServiceTests
             File.WriteAllText(Path.Combine(paths.Shims, "dotnet.cmd"), string.Empty);
             return Task.FromResult(new EnvironmentBootstrapResult(paths.Shims, false, false, [], []));
         }
+
+        public IReadOnlyList<string> FindConfiguredProfiles() => [];
+
+        public Task<EnvironmentRemovalResult> RemoveAsync(CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 }
 

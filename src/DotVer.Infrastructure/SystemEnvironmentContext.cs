@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Runtime.InteropServices;
 using DotVer.Application;
 using Microsoft.Win32;
@@ -61,6 +62,23 @@ public sealed partial class SystemEnvironmentContext : IEnvironmentContext
         Architecture.RiscV64 => "riscv64",
         _ => RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant()
     };
+
+    // <Version> flows into AssemblyInformationalVersion at publish time; the
+    // "+<commit>" build metadata is not part of the comparable version.
+    public string ProductVersion
+    {
+        get
+        {
+            var informational = Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            if (string.IsNullOrWhiteSpace(informational))
+            {
+                return "0.0.0";
+            }
+
+            var plus = informational.IndexOf('+', StringComparison.Ordinal);
+            return plus >= 0 ? informational[..plus] : informational;
+        }
+    }
 
     public IReadOnlyList<string> GetPathEntries()
     {
@@ -150,6 +168,25 @@ public sealed partial class SystemEnvironmentContext : IEnvironmentContext
         }
 
         key.SetValue(name, value, kind);
+        key.Flush();
+        BroadcastEnvironmentChange();
+    }
+
+    public void DeleteUserEnvironmentVariable(string name)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Environment.SetEnvironmentVariable(name, null, EnvironmentVariableTarget.User);
+            return;
+        }
+
+        using var key = Registry.CurrentUser.OpenSubKey(UserEnvironmentKey, writable: true);
+        if (key is null)
+        {
+            return;
+        }
+
+        key.DeleteValue(name, throwOnMissingValue: false);
         key.Flush();
         BroadcastEnvironmentChange();
     }

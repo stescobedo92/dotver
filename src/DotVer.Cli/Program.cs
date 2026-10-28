@@ -52,13 +52,15 @@ var isEach = args.Length > 0 && string.Equals(args[0], "each", StringComparison.
 var isExplain = args.Length > 0 && string.Equals(args[0], "explain", StringComparison.OrdinalIgnoreCase);
 var isTools = args.Length > 0 && string.Equals(args[0], "tools", StringComparison.OrdinalIgnoreCase);
 var isMirror = args.Length > 0 && string.Equals(args[0], "mirror", StringComparison.OrdinalIgnoreCase);
+// self-uninstall must never re-bootstrap what it is about to remove.
+var isSelf = args.Length > 0 && (string.Equals(args[0], "self-update", StringComparison.OrdinalIgnoreCase) || string.Equals(args[0], "self-uninstall", StringComparison.OrdinalIgnoreCase));
 // For exec/each, only an immediate `exec|each --help` is dotver help; later --help belongs to the child.
 var wantsHelp = isExec || isEach
     ? args.Length > 1 && (string.Equals(args[1], "--help", StringComparison.OrdinalIgnoreCase) || string.Equals(args[1], "-h", StringComparison.OrdinalIgnoreCase))
     : args.Contains("--help", StringComparer.OrdinalIgnoreCase) || args.Contains("-h", StringComparer.OrdinalIgnoreCase);
 
 // exec/which/completions resolve directly and must stay side-effect free for scripts.
-if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions && !isAudit && !isScan && !isShell && !isEnv && !isEach && !isExplain && !isTools && !isMirror)
+if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions && !isAudit && !isScan && !isShell && !isEnv && !isEach && !isExplain && !isTools && !isMirror && !isSelf)
 {
     await bootstrap.EnsureConfiguredAsync(CancellationToken.None);
 }
@@ -284,6 +286,12 @@ app.Configure(config =>
 
     config.AddCommand<DeactivateCommand>("deactivate")
         .WithDescription("Clears the persisted current version (falls back to default/global.json/system).");
+
+    config.AddCommand<SelfUpdateCommand>("self-update")
+        .WithDescription("Updates the dotver binary from GitHub releases after verifying checksums.txt; --check only reports.");
+
+    config.AddCommand<SelfUninstallCommand>("self-uninstall")
+        .WithDescription("Removes shims, profile snippets, PATH/registry entries and ~/.dotver (dry run without --yes; --keep-sdks keeps installs/ and runtimes/).");
 });
 
 return await app.RunAsync(args);
