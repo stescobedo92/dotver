@@ -3,31 +3,35 @@ using DotVer.Domain;
 
 namespace DotVer.Application;
 
-public sealed class InstallService : IInstallService
+public sealed partial class InstallService : IInstallService
 {
-    private const string PowerShellInstallScript = "https://dot.net/v1/dotnet-install.ps1";
-    private const string ShellInstallScript = "https://dot.net/v1/dotnet-install.sh";
-    private const string ReleasesIndexUrl = "https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json";
-
     private readonly DotVerPaths _paths;
     private readonly IEnvironmentContext _environment;
     private readonly IHttpResourceClient _httpResourceClient;
     private readonly IProcessRunner _processRunner;
     private readonly IInventoryService _inventoryService;
+    private readonly IDownloadSources? _downloadSources;
 
     public InstallService(
         DotVerPaths paths,
         IEnvironmentContext environment,
         IHttpResourceClient httpResourceClient,
         IProcessRunner processRunner,
-        IInventoryService inventoryService)
+        IInventoryService inventoryService,
+        IDownloadSources? downloadSources = null)
     {
         _paths = paths;
         _environment = environment;
         _httpResourceClient = httpResourceClient;
         _processRunner = processRunner;
         _inventoryService = inventoryService;
+        _downloadSources = downloadSources;
     }
+
+    private async Task<DownloadSources> ResolveSourcesAsync(CancellationToken cancellationToken) =>
+        _downloadSources is null
+            ? DownloadSources.Official
+            : await _downloadSources.ResolveAsync(cancellationToken).ConfigureAwait(false);
 
     public async Task<InstallPlan> ResolveInstallPlanAsync(string token, CancellationToken cancellationToken)
     {
@@ -195,11 +199,12 @@ public sealed class InstallService : IInstallService
 
         Directory.CreateDirectory(_paths.Scripts);
         Directory.CreateDirectory(installRoot);
+        var sources = await ResolveSourcesAsync(cancellationToken).ConfigureAwait(false);
 
         if (_environment.IsWindows)
         {
             var scriptPath = Path.Combine(_paths.Scripts, "dotnet-install.ps1");
-            await _httpResourceClient.DownloadFileAsync(PowerShellInstallScript, scriptPath, cancellationToken).ConfigureAwait(false);
+            await _httpResourceClient.DownloadFileAsync(sources.PowerShellInstallScriptUrl, scriptPath, cancellationToken).ConfigureAwait(false);
 
             // Never resolve pwsh through the current directory (may be an untrusted repo).
             var powerShell = ExecutableLocator.FindOnPath(_environment, "pwsh.exe")
@@ -237,7 +242,7 @@ public sealed class InstallService : IInstallService
         else
         {
             var scriptPath = Path.Combine(_paths.Scripts, "dotnet-install.sh");
-            await _httpResourceClient.DownloadFileAsync(ShellInstallScript, scriptPath, cancellationToken).ConfigureAwait(false);
+            await _httpResourceClient.DownloadFileAsync(sources.ShellInstallScriptUrl, scriptPath, cancellationToken).ConfigureAwait(false);
             if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
             {
                 File.SetUnixFileMode(scriptPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
@@ -361,7 +366,8 @@ public sealed class InstallService : IInstallService
 
     public async Task<IReadOnlyList<ReleaseChannel>> ListRemoteAsync(CancellationToken cancellationToken)
     {
-        var payload = await _httpResourceClient.GetStringAsync(ReleasesIndexUrl, cancellationToken).ConfigureAwait(false);
+        var sources = await ResolveSourcesAsync(cancellationToken).ConfigureAwait(false);
+        var payload = await _httpResourceClient.GetStringAsync(sources.ReleasesIndexUrl, cancellationToken).ConfigureAwait(false);
 
         // Remote metadata is untrusted input: a malformed document must fail
         // with one clear error, and a malformed entry must be skipped.

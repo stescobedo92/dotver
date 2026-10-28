@@ -21,4 +21,13 @@ internal sealed class InstallSettings : CommandSettings
 
     [CommandOption("--no-tools")]
     public bool NoTools { get; init; }
+
+    [CommandOption("--from <ARCHIVE>")]
+    public string? From { get; init; }
+
+    [CommandOption("--sha256 <HEX>")]
+    public string? Sha256 { get; init; }
+
+    [CommandOption("--sha512 <HEX>")]
+    public string? Sha512 { get; init; }
 }

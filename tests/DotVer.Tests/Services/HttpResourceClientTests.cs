@@ -75,6 +75,32 @@ public sealed class HttpResourceClientTests
     }
 
     [Fact]
+    public async Task GetString_AllowsAnExplicitlyConfiguredMirrorHost()
+    {
+        var handler = new StubHandler(_ => Ok("mirrored"));
+        var sources = new StubSources(["mirror.corp.example"]);
+        var client = new HttpResourceClient(new HttpClient(handler), sources: sources);
+
+        var payload = await client.GetStringAsync("https://mirror.corp.example/dotnet/scripts/dotnet-install.sh", CancellationToken.None);
+
+        Assert.Equal("mirrored", payload);
+        // The mirror only widens the allow-list for itself, nothing else.
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => client.GetStringAsync("https://evil.example/x", CancellationToken.None));
+    }
+
+    private sealed class StubSources(IReadOnlyList<string> extraHosts) : DotVer.Application.IDownloadSources
+    {
+        public Task<DotVer.Domain.DownloadSources> ResolveAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(new DotVer.Domain.DownloadSources(
+                "https://dot.net/v1/dotnet-install.ps1",
+                "https://dot.net/v1/dotnet-install.sh",
+                "https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json",
+                extraHosts,
+                IsMirrored: extraHosts.Count > 0));
+    }
+
+    [Fact]
     public async Task DownloadFile_WritesTheResponseBody()
     {
         using var sandbox = new TestSandbox();

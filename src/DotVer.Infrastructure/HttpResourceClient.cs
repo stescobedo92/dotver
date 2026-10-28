@@ -29,11 +29,13 @@ public sealed class HttpResourceClient : IHttpResourceClient
 
     private readonly HttpClient _httpClient;
     private readonly long _maxResponseBytes;
+    private readonly IDownloadSources? _sources;
 
-    public HttpResourceClient(HttpClient httpClient, long maxResponseBytes = DefaultMaxResponseBytes)
+    public HttpResourceClient(HttpClient httpClient, long maxResponseBytes = DefaultMaxResponseBytes, IDownloadSources? sources = null)
     {
         _httpClient = httpClient;
         _maxResponseBytes = maxResponseBytes;
+        _sources = sources;
         _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("dotver", "1.0.0"));
     }
 
@@ -53,7 +55,11 @@ public sealed class HttpResourceClient : IHttpResourceClient
 
     private async Task<byte[]> FetchAsync(string url, CancellationToken cancellationToken)
     {
-        var uri = ValidateUri(url, "requested URL");
+        // A configured mirror widens the allow-list by exactly its own host(s).
+        var allowedHosts = _sources is null
+            ? AllowedHosts
+            : AllowedHosts.Concat((await _sources.ResolveAsync(cancellationToken).ConfigureAwait(false)).ExtraAllowedHosts).ToArray();
+        var uri = ValidateUri(url, "requested URL", allowedHosts);
         for (var hop = 0; ; hop++)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, uri);
@@ -70,7 +76,7 @@ public sealed class HttpResourceClient : IHttpResourceClient
 
                 var location = response.Headers.Location
                     ?? throw new InvalidOperationException($"Redirect from {uri.Host} did not carry a Location header.");
-                uri = ValidateUri(new Uri(uri, location).AbsoluteUri, "redirect target");
+                uri = ValidateUri(new Uri(uri, location).AbsoluteUri, "redirect target", allowedHosts);
                 continue;
             }
 
@@ -110,11 +116,11 @@ public sealed class HttpResourceClient : IHttpResourceClient
             or HttpStatusCode.TemporaryRedirect
             or HttpStatusCode.PermanentRedirect;
 
-    private static Uri ValidateUri(string url, string role)
+    private static Uri ValidateUri(string url, string role, IReadOnlyCollection<string> allowedHosts)
     {
         if (Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
             string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
-            AllowedHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase) &&
+            allowedHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase) &&
             uri.IsDefaultPort &&
             string.IsNullOrEmpty(uri.UserInfo))
         {
@@ -122,6 +128,6 @@ public sealed class HttpResourceClient : IHttpResourceClient
         }
 
         throw new InvalidOperationException(
-            $"Refusing to fetch the {role} '{TerminalText.Sanitize(url)}': only https on {string.Join(", ", AllowedHosts)} is allowed.");
+            $"Refusing to fetch the {role} '{TerminalText.Sanitize(url)}': only https on {string.Join(", ", allowedHosts)} is allowed (add a mirror with 'dotver mirror set').");
     }
 }

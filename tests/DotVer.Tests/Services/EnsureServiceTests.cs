@@ -153,6 +153,11 @@ public sealed class EnsureServiceTests
             return Task.FromResult(new InstallOutcome(plan, sdk, WasAlreadyInstalled: false));
         }
 
+        public Task<InstallOutcome> InstallFromArchiveAsync(string version, string archivePath, ArchiveChecksum checksum, InstallOptions? options, CancellationToken cancellationToken) =>
+
+            throw new NotSupportedException();
+
+
         public Task<RuntimeInstallOutcome> InstallRuntimeAsync(string versionOrChannel, string runtime, string? architecture, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 

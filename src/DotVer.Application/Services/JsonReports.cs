@@ -148,6 +148,26 @@ public static class JsonReports
         });
     }
 
+    public static string ForDownloadSources(DownloadSources sources)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+
+        var hosts = new JsonArray();
+        foreach (var host in sources.ExtraAllowedHosts)
+        {
+            hosts.Add(host);
+        }
+
+        return Root(new JsonObject
+        {
+            ["mirrored"] = sources.IsMirrored,
+            ["installScriptPowerShellUrl"] = sources.PowerShellInstallScriptUrl,
+            ["installScriptShellUrl"] = sources.ShellInstallScriptUrl,
+            ["releasesIndexUrl"] = sources.ReleasesIndexUrl,
+            ["extraAllowedHosts"] = hosts
+        });
+    }
+
     public static string ForRemote(IReadOnlyList<ReleaseChannel> channels)
     {
         ArgumentNullException.ThrowIfNull(channels);

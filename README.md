@@ -39,6 +39,8 @@ dotver install 8.0
 dotver install lts
 dotver install 8.0.412 --arch arm64        # cross-arch: installs/<version>--<arch>
 dotver install 8.0 --runtime aspnetcore    # runtime-only under ~/.dotver/runtimes
+dotver install 8.0.412 --from ./dotnet-sdk-8.0.412-linux-x64.tar.gz --sha512 <hex>   # offline, digest required
+dotver mirror show | set --install-script <url> --releases-index <url> | clear      # corporate mirror
 dotver info [8.0] [--json]                 # runtimes, workloads, architecture
 dotver list-remote [--json]
 dotver outdated [--all] [--managed-only] [--json]
@@ -247,6 +249,33 @@ $ dotver doctor --json                           # non-zero exit while issues re
 
 Every `--json` report carries `"schemaVersion": 1` and is written to raw
 stdout (no terminal wrapping), so it is safe to pipe into `jq` or a CI parser.
+
+### Offline installs, mirrors and proxies
+
+Air-gapped machine? Download the official SDK archive and its published
+SHA-512 elsewhere, then install it without any network access. The digest is
+mandatory, the archive is extracted into a staging directory with zip-slip
+and link protection, validated as an SDK layout, and only then moved into
+`~/.dotver/installs/<version>`:
+
+```bash
+$ dotver install 8.0.412 --from ./dotnet-sdk-8.0.412-linux-x64.tar.gz --sha512 <hex from the download page>
+$ dotver install 8.0.412 --from .\dotnet-sdk-8.0.412-win-x64.zip --sha256 <hex>
+```
+
+Behind a corporate mirror, point dotver at it. Only plain `https` URLs are
+accepted and only those hosts join the download allow-list; on Windows the
+mirrored `dotnet-install.ps1` must still carry a valid Microsoft Authenticode
+signature. `dotver audit` always uses the official release index.
+
+```bash
+$ dotver mirror set --install-script https://mirror.corp.example/dotnet/scripts                     --releases-index https://mirror.corp.example/dotnet/releases-index.json
+$ dotver mirror show
+$ dotver mirror clear
+```
+
+Proxies: `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` (and the Windows system
+proxy) are honored for every download.
 
 ### Keep global tools across SDKs
 

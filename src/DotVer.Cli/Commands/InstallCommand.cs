@@ -34,6 +34,13 @@ internal sealed class InstallCommand : AsyncCommandBase<InstallSettings>
 
     public override async Task<int> ExecuteAsync(CommandContext context, InstallSettings settings)
     {
+        var offline = !string.IsNullOrWhiteSpace(settings.From);
+        var checksum = ResolveChecksum(settings, offline);
+        if (offline && !string.IsNullOrWhiteSpace(settings.Runtime))
+        {
+            throw new InvalidOperationException("--from installs SDK archives only; runtime archives are not supported.");
+        }
+
         if (!string.IsNullOrWhiteSpace(settings.Runtime))
         {
             if (settings.NoUse || settings.NoDefault)
@@ -66,14 +73,25 @@ internal sealed class InstallCommand : AsyncCommandBase<InstallSettings>
             .AutoClear(false)
             .StartAsync(async ctx =>
             {
-                var resolveTask = ctx.AddTask("[green]Resolving version or channel[/]");
-                plan = await _installService.ResolveInstallPlanAsync(settings.VersionOrChannel, CancellationToken.None).ConfigureAwait(false);
-                resolveTask.Value = 100;
+                if (offline)
+                {
+                    var archiveTask = ctx.AddTask("[green]Verifying and extracting the archive[/]");
+                    outcome = await _installService.InstallFromArchiveAsync(
+                        settings.VersionOrChannel, settings.From!, checksum!, new InstallOptions(settings.Architecture), CancellationToken.None).ConfigureAwait(false);
+                    plan = outcome.Plan;
+                    archiveTask.Value = 100;
+                }
+                else
+                {
+                    var resolveTask = ctx.AddTask("[green]Resolving version or channel[/]");
+                    plan = await _installService.ResolveInstallPlanAsync(settings.VersionOrChannel, CancellationToken.None).ConfigureAwait(false);
+                    resolveTask.Value = 100;
 
-                var installTask = ctx.AddTask($"[green]Installing {Markup.Escape(plan.ResolvedVersion)}[/]");
-                outcome = await _installService.InstallAsync(
-                    settings.VersionOrChannel, new InstallOptions(settings.Architecture), CancellationToken.None).ConfigureAwait(false);
-                installTask.Value = 100;
+                    var installTask = ctx.AddTask($"[green]Installing {Markup.Escape(plan.ResolvedVersion)}[/]");
+                    outcome = await _installService.InstallAsync(
+                        settings.VersionOrChannel, new InstallOptions(settings.Architecture), CancellationToken.None).ConfigureAwait(false);
+                    installTask.Value = 100;
+                }
 
                 // A foreign-architecture SDK is never auto-selected: the host
                 // may not be able to run it without emulation.
@@ -170,5 +188,26 @@ internal sealed class InstallCommand : AsyncCommandBase<InstallSettings>
         }
 
         return 0;
+    }
+
+    private static ArchiveChecksum? ResolveChecksum(InstallSettings settings, bool offline)
+    {
+        var hasSha256 = !string.IsNullOrWhiteSpace(settings.Sha256);
+        var hasSha512 = !string.IsNullOrWhiteSpace(settings.Sha512);
+        if (!offline)
+        {
+            return hasSha256 || hasSha512
+                ? throw new InvalidOperationException("--sha256/--sha512 only apply together with --from <archive>.")
+                : null;
+        }
+
+        if (hasSha256 == hasSha512)
+        {
+            throw new InvalidOperationException("--from requires exactly one digest: --sha256 <hex> or --sha512 <hex> (publish them next to the archive).");
+        }
+
+        return hasSha256
+            ? new ArchiveChecksum("sha256", settings.Sha256!)
+            : new ArchiveChecksum("sha512", settings.Sha512!);
     }
 }

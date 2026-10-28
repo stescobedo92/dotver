@@ -51,13 +51,14 @@ var isEnv = args.Length > 0 && string.Equals(args[0], "env", StringComparison.Or
 var isEach = args.Length > 0 && string.Equals(args[0], "each", StringComparison.OrdinalIgnoreCase);
 var isExplain = args.Length > 0 && string.Equals(args[0], "explain", StringComparison.OrdinalIgnoreCase);
 var isTools = args.Length > 0 && string.Equals(args[0], "tools", StringComparison.OrdinalIgnoreCase);
+var isMirror = args.Length > 0 && string.Equals(args[0], "mirror", StringComparison.OrdinalIgnoreCase);
 // For exec/each, only an immediate `exec|each --help` is dotver help; later --help belongs to the child.
 var wantsHelp = isExec || isEach
     ? args.Length > 1 && (string.Equals(args[1], "--help", StringComparison.OrdinalIgnoreCase) || string.Equals(args[1], "-h", StringComparison.OrdinalIgnoreCase))
     : args.Contains("--help", StringComparer.OrdinalIgnoreCase) || args.Contains("-h", StringComparer.OrdinalIgnoreCase);
 
 // exec/which/completions resolve directly and must stay side-effect free for scripts.
-if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions && !isAudit && !isScan && !isShell && !isEnv && !isEach && !isExplain && !isTools)
+if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions && !isAudit && !isScan && !isShell && !isEnv && !isEach && !isExplain && !isTools && !isMirror)
 {
     await bootstrap.EnsureConfiguredAsync(CancellationToken.None);
 }
@@ -216,7 +217,15 @@ app.Configure(config =>
         .WithDescription("Scans a directory tree for global.json pins and reports which are satisfied; --ensure installs the missing SDKs (--dry-run only lists them). Exits non-zero if any pin is missing.");
 
     config.AddCommand<InstallCommand>("install")
-        .WithDescription("Installs an isolated SDK using the official .NET install script, then syncs recorded global tools (--no-tools skips) and runs the post-install hook.");
+        .WithDescription("Installs an isolated SDK using the official .NET install script (or a local archive with --from <zip|tar.gz> --sha256|--sha512 <hex>), then syncs recorded global tools (--no-tools skips) and runs the post-install hook.");
+
+    config.AddBranch("mirror", mirror =>
+    {
+        mirror.SetDescription("Corporate mirror for the install script and release metadata (https only; its host joins the download allow-list).");
+        mirror.AddCommand<MirrorShowCommand>("show").WithDescription("Shows the effective download sources.");
+        mirror.AddCommand<MirrorSetCommand>("set").WithDescription("dotver mirror set --install-script https://mirror/dotnet/scripts --releases-index https://mirror/dotnet/releases-index.json");
+        mirror.AddCommand<MirrorClearCommand>("clear").WithDescription("Returns to the official Microsoft sources.");
+    });
 
     config.AddBranch("tools", tools =>
     {

@@ -14,10 +14,14 @@ public static class ServiceCollectionExtensions
         // Scripts and the releases index: HttpResourceClient validates every
         // redirect hop against its host allow-list, so the handler must not
         // follow redirects on its own.
+        // HTTPS_PROXY / HTTP_PROXY / NO_PROXY (and the Windows system proxy) are
+        // honored through HttpClient.DefaultProxy; stated explicitly on purpose.
         services.AddHttpClient<IHttpResourceClient, HttpResourceClient>()
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
             {
-                AllowAutoRedirect = false
+                AllowAutoRedirect = false,
+                UseProxy = true,
+                Proxy = HttpClient.DefaultProxy
             });
 
         services.AddSingleton<IGlobalJsonService, GlobalJsonService>();
@@ -44,6 +48,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IToolsManifestStore, ToolsManifestStore>();
         services.AddSingleton<IToolSyncService, ToolSyncService>();
         services.AddSingleton<IHookRunner, HookRunner>();
+        services.AddSingleton<IDownloadSources, ConfigDownloadSources>();
+        services.AddSingleton<IMirrorService, MirrorService>();
 
         // Dedicated metadata client: redirects are never followed, so a
         // poisoned endpoint cannot bounce requests to internal services.
