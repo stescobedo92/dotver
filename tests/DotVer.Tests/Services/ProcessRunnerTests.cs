@@ -45,6 +45,19 @@ public sealed class ProcessRunnerTests
         Assert.Equal(string.Empty, result.StandardError);
     }
 
+    [Theory]
+    [InlineData("dotnet")]
+    [InlineData("./dotnet")]
+    public async Task RunAsync_RejectsFileNamesThatAreNotFullyQualified(string fileName)
+    {
+        var runner = new ProcessRunner();
+
+        // A bare or relative name lets CreateProcess/execvp resolve through the
+        // current directory, which may be an untrusted repository.
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => runner.RunAsync(new ProcessSpec(fileName, ["--version"]), CancellationToken.None));
+    }
+
     private static string DotnetHost()
     {
         // <root>/shared/Microsoft.NETCore.App/<version> -> walk up to <root>/dotnet(.exe)

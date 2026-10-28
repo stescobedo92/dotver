@@ -100,5 +100,38 @@ public sealed class StateServiceTests
 
         public string? GetSystemDotnetPath() => null;
     }
-}
 
+    [Fact]
+    public async Task RegisterRoot_StoresAbsolutePathResolvedAgainstCurrentDirectory()
+    {
+        using var sandbox = new TestSandbox(TestPlatform.Linux);
+        sandbox.CreateDirectory("custom-dotnet");
+        var configStore = new InMemoryConfigStore(DotVerConfig.Empty);
+        var environment = sandbox.CreateEnvironment();
+        var inventory = new InventoryService(DotVerPaths.From(environment), environment, configStore);
+        var stateService = new StateService(configStore, new VersionResolver(), inventory, DotVerPaths.From(environment), environment);
+
+        var registered = await stateService.RegisterRootAsync("custom-dotnet", CancellationToken.None);
+
+        var expected = Path.Combine(sandbox.Root, "custom-dotnet");
+        Assert.Equal(expected, registered);
+        var config = await configStore.LoadAsync(CancellationToken.None);
+        Assert.Equal([expected], config.RegisteredRoots);
+    }
+
+    [Fact]
+    public async Task RegisterRoot_MissingDirectory_ThrowsAndLeavesConfigUntouched()
+    {
+        using var sandbox = new TestSandbox(TestPlatform.Linux);
+        var configStore = new InMemoryConfigStore(DotVerConfig.Empty);
+        var environment = sandbox.CreateEnvironment();
+        var inventory = new InventoryService(DotVerPaths.From(environment), environment, configStore);
+        var stateService = new StateService(configStore, new VersionResolver(), inventory, DotVerPaths.From(environment), environment);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => stateService.RegisterRootAsync(Path.Combine(sandbox.Root, "does-not-exist"), CancellationToken.None));
+
+        var config = await configStore.LoadAsync(CancellationToken.None);
+        Assert.Empty(config.RegisteredRoots);
+    }
+}

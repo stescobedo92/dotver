@@ -13,9 +13,12 @@ public sealed record DotVerPaths(
     public static DotVerPaths From(IEnvironmentContext environment)
     {
         var home = environment.GetEnvironmentVariable("DOTVER_HOME");
-        var root = string.IsNullOrWhiteSpace(home)
+
+        // Anchor once: inventory ignores relative root hints, so a relative
+        // DOTVER_HOME must become absolute here rather than drift with the cwd.
+        var root = Path.GetFullPath(string.IsNullOrWhiteSpace(home)
             ? Path.Combine(environment.HomeDirectory, ".dotver")
-            : home;
+            : home.Trim());
 
         return new DotVerPaths(
             root,

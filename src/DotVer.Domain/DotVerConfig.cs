@@ -6,5 +6,7 @@ public sealed record DotVerConfig(
     Dictionary<string, string> Aliases,
     List<string> RegisteredRoots)
 {
-    public static DotVerConfig Empty { get; } = new(null, null, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), []);
+    // A fresh instance per call: the collections are mutable, so a shared
+    // singleton would leak state between callers.
+    public static DotVerConfig Empty => new(null, null, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), []);
 }

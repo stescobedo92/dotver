@@ -33,7 +33,7 @@ public sealed class InstallService : IInstallService
     {
         if (SdkVersion.TryParse(token, out var exactVersion))
         {
-            return new InstallPlan(token, exactVersion!.Raw, "Version exacta solicitada por el usuario.", null);
+            return new InstallPlan(token, exactVersion!.Raw, "Exact version requested by the user.", null);
         }
 
         var channels = await ListRemoteAsync(cancellationToken).ConfigureAwait(false);
@@ -205,6 +205,9 @@ public sealed class InstallService : IInstallService
             var powerShell = ExecutableLocator.FindOnPath(_environment, "pwsh.exe")
                 ?? throw new InvalidOperationException("Could not find pwsh.exe on PATH (the current directory is intentionally excluded).");
 
+            // TLS authenticates the CDN; Authenticode authenticates the publisher.
+            await VerifyAuthenticodeSignatureAsync(powerShell, scriptPath, cancellationToken).ConfigureAwait(false);
+
             var args = new List<string> { "-NoProfile", "-File", scriptPath, "-InstallDir", installRoot, "-NoPath" };
             if (version is not null)
             {
@@ -268,6 +271,43 @@ public sealed class InstallService : IInstallService
         }
     }
 
+    // Runs under -Command with the script path supplied through the environment,
+    // so no quoting rule of PowerShell can be confused by the path itself.
+    private const string AuthenticodeCheck =
+        "$ErrorActionPreference = 'Stop'; " +
+        "$signature = Get-AuthenticodeSignature -LiteralPath $env:DOTVER_SCRIPT; " +
+        "if ($signature.Status -ne 'Valid') { Write-Error ('Signature status: ' + $signature.Status); exit 1 }; " +
+        "if ($signature.SignerCertificate.Subject -notmatch '(^|, )CN=Microsoft Corporation(,|$)') { Write-Error ('Unexpected signer: ' + $signature.SignerCertificate.Subject); exit 2 }; " +
+        "exit 0";
+
+    private async Task VerifyAuthenticodeSignatureAsync(string powerShell, string scriptPath, CancellationToken cancellationToken)
+    {
+        var spec = new ProcessSpec(
+            powerShell,
+            ["-NoProfile", "-NonInteractive", "-Command", AuthenticodeCheck],
+            EnvironmentVariables: new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase) { ["DOTVER_SCRIPT"] = scriptPath });
+
+        var result = await _processRunner.RunAsync(spec, cancellationToken).ConfigureAwait(false);
+        if (result.ExitCode == 0)
+        {
+            return;
+        }
+
+        // Do not leave an unverified script lying around in the cache.
+        try
+        {
+            File.Delete(scriptPath);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Best effort cleanup; the refusal below is what matters.
+        }
+
+        throw new InvalidOperationException(
+            "Refusing to run dotnet-install.ps1: its Authenticode signature is missing, invalid or not issued to Microsoft Corporation. " +
+            TerminalText.Sanitize(result.StandardError.Trim()));
+    }
+
     private string ManagedLeaf(string version, string architecture) =>
         Architectures.MatchesHost(architecture, _environment.RuntimeArchitecture)
             ? version
@@ -322,29 +362,62 @@ public sealed class InstallService : IInstallService
     public async Task<IReadOnlyList<ReleaseChannel>> ListRemoteAsync(CancellationToken cancellationToken)
     {
         var payload = await _httpResourceClient.GetStringAsync(ReleasesIndexUrl, cancellationToken).ConfigureAwait(false);
-        using var document = JsonDocument.Parse(payload);
 
-        return document.RootElement
-            .GetProperty("releases-index")
-            .EnumerateArray()
-            .Select(node => new ReleaseChannel(
-                node.GetProperty("channel-version").GetString() ?? "unknown",
-                node.GetProperty("latest-sdk").GetString() ?? "unknown",
-                node.TryGetProperty("support-phase", out var supportPhase) ? supportPhase.GetString() ?? "unknown" : "unknown",
-                node.TryGetProperty("release-type", out var releaseType) ? releaseType.GetString() ?? "unknown" : "unknown",
-                node.TryGetProperty("releases.json", out var releasesJson) ? releasesJson.GetString() : null))
-            // Remote metadata is untrusted display input too: drop channels with
-            // invalid names and strip control characters from the rest.
-            .Where(static channel => IsValidChannelName(channel.Channel))
-            .Select(static channel => channel with
+        // Remote metadata is untrusted input: a malformed document must fail
+        // with one clear error, and a malformed entry must be skipped.
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(payload);
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidOperationException("Release metadata is not valid JSON.", exception);
+        }
+
+        using (document)
+        {
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("releases-index", out var index) ||
+                index.ValueKind != JsonValueKind.Array)
             {
-                LatestSdkVersion = TerminalText.Sanitize(channel.LatestSdkVersion),
-                SupportPhase = TerminalText.Sanitize(channel.SupportPhase),
-                ReleaseType = TerminalText.Sanitize(channel.ReleaseType)
-            })
-            .OrderByDescending(static channel => channel.Channel, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+                throw new InvalidOperationException("Release metadata is malformed: expected an object with a releases-index array.");
+            }
+
+            var channels = new List<ReleaseChannel>();
+            foreach (var node in index.EnumerateArray())
+            {
+                if (node.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var channel = ReadString(node, "channel-version");
+                var latestSdk = ReadString(node, "latest-sdk");
+                if (channel is null || latestSdk is null || !IsValidChannelName(channel))
+                {
+                    continue;
+                }
+
+                channels.Add(new ReleaseChannel(
+                    channel,
+                    TerminalText.Sanitize(latestSdk),
+                    TerminalText.Sanitize(ReadString(node, "support-phase") ?? "unknown"),
+                    TerminalText.Sanitize(ReadString(node, "release-type") ?? "unknown"),
+                    ReadString(node, "releases.json")));
+            }
+
+            return channels
+                .OrderByDescending(static channel => channel.Channel, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
     }
+
+    private static string? ReadString(JsonElement node, string name) =>
+        node.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
 
     private string ResolveManagedInstallRoot(string leaf) => ResolveContainedRoot(_paths.ManagedInstalls, leaf);
 

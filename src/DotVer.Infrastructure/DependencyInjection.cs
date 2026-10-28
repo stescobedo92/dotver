@@ -11,7 +11,14 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(static provider => DotVerPaths.From(provider.GetRequiredService<IEnvironmentContext>()));
         services.AddSingleton<IConfigStore, JsonConfigStore>();
         services.AddSingleton<IProcessRunner, ProcessRunner>();
-        services.AddHttpClient<IHttpResourceClient, HttpResourceClient>();
+        // Scripts and the releases index: HttpResourceClient validates every
+        // redirect hop against its host allow-list, so the handler must not
+        // follow redirects on its own.
+        services.AddHttpClient<IHttpResourceClient, HttpResourceClient>()
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            {
+                AllowAutoRedirect = false
+            });
 
         services.AddSingleton<IGlobalJsonService, GlobalJsonService>();
         services.AddSingleton<IVersionResolver, VersionResolver>();

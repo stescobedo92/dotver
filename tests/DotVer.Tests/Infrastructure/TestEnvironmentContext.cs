@@ -65,5 +65,12 @@ internal sealed class TestEnvironmentContext : IEnvironmentContext
 
     public string? GetUserEnvironmentVariable(string name) => _variables.TryGetValue(name, out var value) ? value : null;
 
-    public void SetUserEnvironmentVariable(string name, string value) => _variables[name] = value;
+    /// <summary>Number of persistent (user-scope) variable writes, to assert idempotency.</summary>
+    public int UserVariableWrites { get; private set; }
+
+    public void SetUserEnvironmentVariable(string name, string value)
+    {
+        UserVariableWrites++;
+        _variables[name] = value;
+    }
 }

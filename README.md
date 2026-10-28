@@ -266,6 +266,9 @@ npm install -g dotver
 npx dotver list
 ```
 
+The package embeds the SHA-256 of every release binary; `postinstall` verifies
+the download against it and refuses to install anything that does not match.
+
 ### Install via WinGet (Windows)
 
 ```bash
@@ -300,6 +303,24 @@ visible.
 
 Script-oriented commands skip this bootstrap so they stay side-effect free:
 `exec`, `which`, and `completions` never rewrite shims, `PATH`, or profiles.
+The `dotnet` shim itself never bootstraps either: running `dotnet build` only
+runs dotnet.
+
+The bootstrap is conservative about your files:
+
+- Set `DOTVER_NO_BOOTSTRAP=1` to keep dotver from touching `PATH`, shell
+  profiles or the registry at all. Shims are still written under `~/.dotver`;
+  source the snippet in `~/.dotver/env` yourself.
+- Profiles are edited atomically, through symlinks (dotfile repos keep working),
+  and `~/.config/fish/config.fish` is only touched when `~/.config/fish` exists.
+- A dotver block you delete from a profile is not re-added: configured profiles
+  are remembered in `~/.dotver/bootstrap.json`.
+- On Windows, the user `PATH` keeps its `REG_EXPAND_SZ` kind and unexpanded
+  `%VARIABLES%`; nothing is rewritten when the shims directory is already there.
+
+`dotver register-root <path>` stores the absolute path of an existing directory;
+relative entries (in the config, in `PATH` or in `DOTNET_ROOT`) are ignored by
+the scanner so a cloned repository can never pose as a dotnet root.
 
 On Windows, the current process cannot mutate the already-open parent shell; if the persistent PATH changes, simply open a new terminal.
 

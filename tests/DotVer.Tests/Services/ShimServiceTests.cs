@@ -19,6 +19,22 @@ public sealed class ShimServiceTests
         Assert.Contains("dotver.ps1", service.RenderEnvSnippet(ShellKind.PowerShell), StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task WindowsCmdEnvSnippet_QuotesTheWholeAssignment()
+    {
+        using var sandbox = new TestSandbox(TestPlatform.Windows);
+        var environment = sandbox.CreateEnvironment();
+        var paths = DotVerPaths.From(environment);
+        var service = new ShimService(paths, environment);
+
+        await service.InstallAsync(CancellationToken.None);
+
+        // `set X=value` leaves & | < > in the path live for cmd.exe; the
+        // quoted form `set "X=value"` is the only safe spelling.
+        var cmd = File.ReadAllText(Path.Combine(paths.Env, "dotver.cmd"));
+        Assert.Contains("set \"PATH=" + paths.Shims + ";%PATH%\"", cmd, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(TestPlatform.Linux)]
     [InlineData(TestPlatform.MacOS)]
@@ -91,6 +107,7 @@ public sealed class ShimServiceTests
     {
         using var sandbox = new TestSandbox(platform);
         var environment = sandbox.CreateEnvironment();
+        Directory.CreateDirectory(Path.Combine(environment.HomeDirectory, ".config", "fish"));
         var paths = DotVerPaths.From(environment);
         var shimService = new ShimService(paths, environment);
         var bootstrap = new EnvironmentBootstrapService(paths, environment, shimService);

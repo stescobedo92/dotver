@@ -7,6 +7,7 @@
     "type": "git",
     "url": "https://github.com/OWNER/REPO.git"
   },
+  "binaryChecksums": {},
   "bin": {
     "dotver": "./bin/dotver.js",
     "dotnet": "./bin/dotnet.js"
@@ -17,9 +18,10 @@
     "vendor"
   ],
   "scripts": {
-    "postinstall": "node ./scripts/install.mjs"
+    "postinstall": "node ./scripts/install.mjs",
+    "test": "node --test test/install.test.mjs"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.11"
   }
 }

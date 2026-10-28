@@ -8,6 +8,19 @@ public sealed class ProcessRunner : IProcessRunner
 {
     public async Task<ProcessResult> RunAsync(ProcessSpec spec, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(spec);
+
+        // CreateProcess (Windows) and .NET's Unix ResolvePath both search the
+        // current directory before PATH for unqualified names; callers must
+        // resolve executables first (ExecutableLocator) so an untrusted cwd can
+        // never supply the binary.
+        if (string.IsNullOrWhiteSpace(spec.FileName) || !Path.IsPathFullyQualified(spec.FileName))
+        {
+            throw new ArgumentException(
+                "Process file name must be an absolute path; got " + TerminalText.Sanitize(spec.FileName ?? string.Empty) + ".",
+                nameof(spec));
+        }
+
         var startInfo = new ProcessStartInfo
         {
             FileName = spec.FileName,

@@ -180,4 +180,77 @@ public sealed class GlobalJsonServiceTests
         Assert.False(result.Cleared);
         Assert.Equal(content, File.ReadAllText(path));
     }
+
+    [Fact]
+    public void WritePin_WhenGlobalJsonIsSymlink_RefusesAndNeverCopiesTargetContent()
+    {
+        using var sandbox = new TestSandbox();
+        var repo = sandbox.CreateDirectory("repo");
+        var secret = Path.Combine(sandbox.CreateDirectory("victim-home"), "docker-config.json");
+        const string secretContent = """{"auths":{"registry.example":{"auth":"c2VjcmV0"}}}""";
+        File.WriteAllText(secret, secretContent);
+        var link = Path.Combine(repo, "global.json");
+        if (!SymlinkSupport.TryCreateFile(link, secret))
+        {
+            return; // symlink creation needs a privilege this runner lacks
+        }
+
+        var service = new GlobalJsonService();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => service.WritePin(repo, SdkVersion.Parse("8.0.412"), null));
+
+        Assert.Contains("symbolic link", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(new FileInfo(link).LinkTarget);
+        Assert.Equal(secretContent, File.ReadAllText(secret));
+        Assert.Empty(Directory.EnumerateFiles(repo, "*.tmp"));
+    }
+
+    [Fact]
+    public void ClearPin_WhenGlobalJsonIsSymlink_RefusesAndLeavesLinkIntact()
+    {
+        using var sandbox = new TestSandbox();
+        var repo = sandbox.CreateDirectory("repo");
+        var target = Path.Combine(sandbox.CreateDirectory("elsewhere"), "pinned.json");
+        const string content = """{"sdk":{"version":"8.0.412"}}""";
+        File.WriteAllText(target, content);
+        var link = Path.Combine(repo, "global.json");
+        if (!SymlinkSupport.TryCreateFile(link, target))
+        {
+            return; // symlink creation needs a privilege this runner lacks
+        }
+
+        Assert.Throws<InvalidOperationException>(() => new GlobalJsonService().ClearPin(repo));
+
+        Assert.NotNull(new FileInfo(link).LinkTarget);
+        Assert.Equal(content, File.ReadAllText(target));
+    }
+
+    [Fact]
+    public void WritePin_OnUtf8BomPrefixedFile_PreservesExistingProperties()
+    {
+        using var sandbox = new TestSandbox();
+        var repo = sandbox.CreateDirectory("repo");
+        var path = Path.Combine(repo, "global.json");
+        File.WriteAllText(path, """{"msbuild-sdks":{"MySdk":"1.0.0"}}""", new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+        var result = new GlobalJsonService().WritePin(repo, SdkVersion.Parse("8.0.412"), null);
+
+        using var doc = JsonDocument.Parse(File.ReadAllText(result.FilePath));
+        Assert.Equal("1.0.0", doc.RootElement.GetProperty("msbuild-sdks").GetProperty("MySdk").GetString());
+        Assert.Equal("8.0.412", doc.RootElement.GetProperty("sdk").GetProperty("version").GetString());
+    }
+
+    [Fact]
+    public void TryFind_OnUtf8BomPrefixedFile_ReadsPin()
+    {
+        using var sandbox = new TestSandbox();
+        var repo = sandbox.CreateDirectory("repo");
+        File.WriteAllText(Path.Combine(repo, "global.json"), """{"sdk":{"version":"8.0.412"}}""", new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+        var request = new GlobalJsonService().TryFind(repo);
+
+        Assert.NotNull(request);
+        Assert.Equal("8.0.412", request!.Version.Raw);
+    }
 }

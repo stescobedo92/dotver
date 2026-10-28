@@ -89,15 +89,27 @@ public sealed class StateService : IStateService
         await _configStore.SaveAsync(config, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task RegisterRootAsync(string path, CancellationToken cancellationToken)
+    public async Task<string> RegisterRootAsync(string path, CancellationToken cancellationToken)
     {
-        var config = await _configStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-        if (!config.RegisteredRoots.Contains(path, StringComparer.OrdinalIgnoreCase))
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        // Persist the absolute location the user meant right now: a relative
+        // entry would be re-resolved against every future working directory.
+        var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path.Trim(), _environment.CurrentDirectory));
+        if (!Directory.Exists(normalized))
         {
-            config.RegisteredRoots.Add(path);
+            throw new InvalidOperationException($"Directory '{TerminalText.Sanitize(normalized)}' does not exist; nothing was registered.");
         }
 
-        await _configStore.SaveAsync(config, cancellationToken).ConfigureAwait(false);
+        var comparer = _environment.IsWindows ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        var config = await _configStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        if (!config.RegisteredRoots.Contains(normalized, comparer))
+        {
+            config = config with { RegisteredRoots = [.. config.RegisteredRoots, normalized] };
+            await _configStore.SaveAsync(config, cancellationToken).ConfigureAwait(false);
+        }
+
+        return normalized;
     }
 
     public async Task<UninstallOutcome> UninstallManagedAsync(string token, CancellationToken cancellationToken)

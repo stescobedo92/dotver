@@ -23,12 +23,24 @@ internal sealed class InMemoryConfigStore : IConfigStore
 
 internal sealed class FakeProcessRunner : IProcessRunner
 {
+    private readonly Func<ProcessSpec, ProcessResult>? _handler;
+
+    public FakeProcessRunner()
+    {
+    }
+
+    /// <param name="handler">Decides the result per invocation (e.g. fail a specific step).</param>
+    public FakeProcessRunner(Func<ProcessSpec, ProcessResult> handler)
+    {
+        _handler = handler;
+    }
+
     public List<ProcessSpec> Invocations { get; } = [];
 
     public Task<ProcessResult> RunAsync(ProcessSpec spec, CancellationToken cancellationToken)
     {
         Invocations.Add(spec);
-        return Task.FromResult(new ProcessResult(0, "fake-output", string.Empty));
+        return Task.FromResult(_handler?.Invoke(spec) ?? new ProcessResult(0, "fake-output", string.Empty));
     }
 }
 

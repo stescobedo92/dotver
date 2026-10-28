@@ -1,10 +1,13 @@
 using System.Runtime.InteropServices;
 using DotVer.Application;
+using Microsoft.Win32;
 
 namespace DotVer.Infrastructure;
 
-public sealed class SystemEnvironmentContext : IEnvironmentContext
+public sealed partial class SystemEnvironmentContext : IEnvironmentContext
 {
+    private const string UserEnvironmentKey = "Environment";
+
     public string HomeDirectory =>
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
@@ -77,7 +80,16 @@ public sealed class SystemEnvironmentContext : IEnvironmentContext
     {
         if (!IsWindows)
         {
-            return ["/usr/share/dotnet", "/usr/local/share/dotnet", "/usr/lib/dotnet"];
+            var unixRoots = new List<string> { "/usr/share/dotnet", "/usr/local/share/dotnet", "/usr/lib/dotnet" };
+
+            // dotnet-install.sh installs here when --install-dir is omitted.
+            var home = HomeDirectory;
+            if (!string.IsNullOrWhiteSpace(home))
+            {
+                unixRoots.Add(Path.Combine(home, ".dotnet"));
+            }
+
+            return unixRoots;
         }
 
         var roots = new List<string>();
@@ -93,14 +105,89 @@ public sealed class SystemEnvironmentContext : IEnvironmentContext
             roots.Add(Path.Combine(programFilesX86, "dotnet"));
         }
 
+        // dotnet-install.ps1 installs here when -InstallDir is omitted.
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (!string.IsNullOrWhiteSpace(localAppData))
+        {
+            roots.Add(Path.Combine(localAppData, "Microsoft", "dotnet"));
+        }
+
         return roots;
     }
 
     public string? GetEnvironmentVariable(string name) => Environment.GetEnvironmentVariable(name);
 
-    public string? GetUserEnvironmentVariable(string name) =>
-        Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.User);
+    // User-scope variables go through the registry directly: the Environment
+    // class expands REG_EXPAND_SZ values on read and writes REG_SZ back, which
+    // would bake %USERPROFILE% and friends into the user PATH on every rewrite.
+    public string? GetUserEnvironmentVariable(string name)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.User);
+        }
 
-    public void SetUserEnvironmentVariable(string name, string value) =>
-        Environment.SetEnvironmentVariable(name, value, EnvironmentVariableTarget.User);
+        using var key = Registry.CurrentUser.OpenSubKey(UserEnvironmentKey, writable: false);
+        return key?.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
+    }
+
+    public void SetUserEnvironmentVariable(string name, string value)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Environment.SetEnvironmentVariable(name, value, EnvironmentVariableTarget.User);
+            return;
+        }
+
+        using var key = Registry.CurrentUser.CreateSubKey(UserEnvironmentKey, writable: true)
+            ?? throw new InvalidOperationException("Could not open the user Environment registry key.");
+
+        // Keep the existing kind; anything that references a variable must stay expandable.
+        var kind = ExistingKind(key, name);
+        if (value.Contains('%', StringComparison.Ordinal))
+        {
+            kind = RegistryValueKind.ExpandString;
+        }
+
+        key.SetValue(name, value, kind);
+        key.Flush();
+        BroadcastEnvironmentChange();
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static RegistryValueKind ExistingKind(RegistryKey key, string name)
+    {
+        try
+        {
+            return key.GetValueKind(name) == RegistryValueKind.ExpandString
+                ? RegistryValueKind.ExpandString
+                : RegistryValueKind.String;
+        }
+        catch (IOException)
+        {
+            // The value does not exist yet.
+            return RegistryValueKind.String;
+        }
+    }
+
+    // Environment.SetEnvironmentVariable(User) does this implicitly; raw
+    // registry writes must notify Explorer so new terminals see the change.
+    private static void BroadcastEnvironmentChange()
+    {
+        const nint hwndBroadcast = 0xFFFF;
+        const uint wmSettingChange = 0x001A;
+        const uint smtoAbortIfHung = 0x0002;
+
+        try
+        {
+            _ = SendMessageTimeoutW(hwndBroadcast, wmSettingChange, 0, "Environment", smtoAbortIfHung, 1000, out _);
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException)
+        {
+            // Best effort: the registry value is already written.
+        }
+    }
+
+    [LibraryImport("user32.dll", StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
+    private static partial nint SendMessageTimeoutW(nint hWnd, uint msg, nuint wParam, string lParam, uint flags, uint timeout, out nuint result);
 }

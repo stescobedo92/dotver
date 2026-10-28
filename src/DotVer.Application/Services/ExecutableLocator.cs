@@ -6,7 +6,15 @@ namespace DotVer.Application;
 /// </summary>
 public static class ExecutableLocator
 {
-    public static string? FindOnPath(IEnvironmentContext environment, string fileName)
+    public static string? FindOnPath(IEnvironmentContext environment, string fileName) =>
+        FindOnPath(environment, fileName, excludedDirectories: null);
+
+    /// <summary>
+    /// Like <see cref="FindOnPath(IEnvironmentContext, string)"/>, additionally skipping
+    /// <paramref name="excludedDirectories"/> even when they are on PATH (e.g. dotver's own
+    /// shims directory when the shim is looking for the real host).
+    /// </summary>
+    public static string? FindOnPath(IEnvironmentContext environment, string fileName, IReadOnlyCollection<string>? excludedDirectories)
     {
         ArgumentNullException.ThrowIfNull(environment);
         ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
@@ -18,7 +26,14 @@ public static class ExecutableLocator
         }
 
         var comparison = environment.IsWindows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        var currentDirectory = Path.GetFullPath(environment.CurrentDirectory);
+        var skipped = new List<string> { Normalize(environment.CurrentDirectory) };
+        foreach (var excluded in excludedDirectories ?? [])
+        {
+            if (!string.IsNullOrWhiteSpace(excluded) && Path.IsPathFullyQualified(excluded))
+            {
+                skipped.Add(Normalize(excluded));
+            }
+        }
 
         foreach (var entry in environment.GetPathEntries())
         {
@@ -27,8 +42,8 @@ public static class ExecutableLocator
                 continue;
             }
 
-            var fullEntry = Path.GetFullPath(entry);
-            if (string.Equals(fullEntry.TrimEnd(Path.DirectorySeparatorChar), currentDirectory.TrimEnd(Path.DirectorySeparatorChar), comparison))
+            var fullEntry = Normalize(entry);
+            if (skipped.Any(directory => string.Equals(fullEntry, directory, comparison)))
             {
                 continue;
             }
@@ -42,4 +57,7 @@ public static class ExecutableLocator
 
         return null;
     }
+
+    private static string Normalize(string directory) =>
+        Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 }

@@ -51,7 +51,7 @@ public sealed partial class GlobalJsonService : IGlobalJsonService
                 return new GlobalJsonReadResult(GlobalJsonReadStatus.Invalid, null);
             }
 
-            using var document = JsonDocument.Parse(bytes, DocumentOptions);
+            using var document = JsonDocument.Parse(StripUtf8Bom(bytes), DocumentOptions);
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
             {
@@ -245,6 +245,12 @@ public sealed partial class GlobalJsonService : IGlobalJsonService
         public uint FileIndexLow;
     }
 
+    // Utf8JsonReader does not skip a byte-order mark (File.ReadAllText did).
+    private static ReadOnlyMemory<byte> StripUtf8Bom(byte[] bytes) =>
+        bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF
+            ? bytes.AsMemory(3)
+            : bytes.AsMemory();
+
     private static byte[]? ReadBounded(Stream stream)
     {
         using var buffer = new MemoryStream();
@@ -413,7 +419,23 @@ public sealed partial class GlobalJsonService : IGlobalJsonService
 
     private static JsonObject ReadRootObject(string path)
     {
-        if (new FileInfo(path).Length > MaxGlobalJsonBytes)
+        // Same link-safe, bounded open as Read(): the file lives in a possibly
+        // untrusted repository, and whatever is read here gets written back as
+        // the new global.json. Following a symlink would copy its target
+        // (e.g. a credentials file) into the repo.
+        byte[]? bytes;
+        try
+        {
+            using var stream = OpenRegularFile(path)
+                ?? throw new InvalidOperationException($"'{path}' is a symbolic link or not a regular file; refusing to modify it.");
+            bytes = ReadBounded(stream);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or EntryPointNotFoundException or DllNotFoundException)
+        {
+            throw new InvalidOperationException($"'{path}' could not be read safely; refusing to modify it. {exception.Message}", exception);
+        }
+
+        if (bytes is null)
         {
             throw new InvalidOperationException($"'{path}' exceeds the {MaxGlobalJsonBytes}-byte limit for global.json; refusing to modify it.");
         }
@@ -421,7 +443,7 @@ public sealed partial class GlobalJsonService : IGlobalJsonService
         JsonNode? node;
         try
         {
-            node = JsonNode.Parse(File.ReadAllText(path), documentOptions: DocumentOptions);
+            node = JsonNode.Parse(StripUtf8Bom(bytes).Span, documentOptions: DocumentOptions);
         }
         catch (JsonException exception)
         {

@@ -32,7 +32,9 @@ public sealed class ShimService : IShimService
                         $"function global:dotnet {{ {launcher.PowerShellInterceptInvoke} @args }}{Environment.NewLine}";
 
             files.Add(WriteEnvFile("dotver.ps1", psEnv));
-            files.Add(WriteEnvFile("dotver.cmd", $"@echo off{Environment.NewLine}set PATH={EscapeCmdBatchValue(_paths.Shims)};%PATH%{Environment.NewLine}"));
+            // Quoted `set "X=..."`: an unquoted assignment leaves & | < > in the
+            // path live for cmd.exe (same form EnvScript already uses).
+            files.Add(WriteEnvFile("dotver.cmd", $"@echo off{Environment.NewLine}set \"PATH={EscapeCmdBatchValue(_paths.Shims)};%PATH%\"{Environment.NewLine}"));
         }
         else
         {

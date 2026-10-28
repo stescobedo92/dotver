@@ -1,4 +1,6 @@
 bin/
+# Build output only: the npm launchers live in packaging/npm/bin and must ship.
+!packaging/npm/bin/
 obj/
 .vs/
 .idea/

@@ -11,12 +11,16 @@ on:
         required: true
         type: string
 
+# Least privilege by default: only the jobs that publish declare contents: write.
+# Every action is pinned to a commit SHA (the tag it corresponds to is in the comment).
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   setup:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # pushes the tag on workflow_dispatch
     outputs:
       version: ${{ steps.ver.outputs.version }}
       assembly_version: ${{ steps.ver.outputs.assembly_version }}
@@ -50,16 +54,20 @@ jobs:
           echo "assembly_version=$ASSEMBLY_VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         if: github.event_name == 'workflow_dispatch'
 
       - name: Create and push tag
         if: github.event_name == 'workflow_dispatch'
+        env:
+          ACTOR: ${{ github.actor }}
+          ACTOR_ID: ${{ github.actor_id }}
+          TAG: ${{ steps.ver.outputs.tag }}
         run: |
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
-          git tag "${{ steps.ver.outputs.tag }}"
-          git push origin "${{ steps.ver.outputs.tag }}"
+          git config user.name "$ACTOR"
+          git config user.email "${ACTOR_ID}+${ACTOR}@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
 
   publish-binaries:
     needs: setup
@@ -87,12 +95,12 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.setup.outputs.tag }}
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: 10.0.x
 
@@ -130,7 +138,7 @@ jobs:
           } | Set-Content artifacts/release/checksums-${{ matrix.rid }}.txt
 
       - name: Upload release assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-${{ matrix.rid }}
           path: artifacts/release/*
@@ -138,9 +146,11 @@ jobs:
   github-release:
     runs-on: ubuntu-latest
     needs: [setup, publish-binaries]
+    permissions:
+      contents: write # creates the GitHub release and uploads its assets
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: artifacts/release
 
@@ -151,7 +161,7 @@ jobs:
           cat artifacts/release/*/checksums-*.txt | sort > artifacts/final/checksums.txt
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ needs.setup.outputs.tag }}
           name: dotver ${{ needs.setup.outputs.tag }}
@@ -163,12 +173,24 @@ jobs:
     needs: [setup, github-release]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.setup.outputs.tag }}
 
+      # The package embeds the SHA-256 of each binary so postinstall can verify
+      # what it downloads. Take the digests from this run's build artifacts,
+      # never from a re-download of the published assets.
+      - name: Download build checksums
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-*
+          path: artifacts/release
+
+      - name: Collate checksums
+        run: cat artifacts/release/*/checksums-*.txt | sort > artifacts/checksums.txt
+
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
@@ -177,8 +199,18 @@ jobs:
         shell: pwsh
         env:
           VERSION: ${{ needs.setup.outputs.version }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          ./.github/scripts/Prepare-NpmPackage.ps1 -Version $env:VERSION -Repository '${{ github.repository }}'
+          ./.github/scripts/Prepare-NpmPackage.ps1 -Version $env:VERSION -Repository $env:REPOSITORY -ChecksumsPath artifacts/checksums.txt
+
+      - name: Verify package contents
+        run: |
+          cd artifacts/npm
+          node --check scripts/install.mjs
+          node --check scripts/lib.mjs
+          test -f bin/dotver.js
+          test -f bin/dotnet.js
+          npm pack --dry-run
 
       # The secrets context is not allowed in step `if` expressions (it fails
       # the whole workflow at parse time). Probe for the token in a step whose
@@ -203,7 +235,7 @@ jobs:
           npm publish --access public
 
       - name: Upload npm artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: npm-package
           path: artifacts/npm
@@ -211,48 +243,65 @@ jobs:
   winget-manifest:
     runs-on: windows-latest
     needs: [setup, github-release]
-    env:
-      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.setup.outputs.tag }}
 
-      - name: Download win-x64 zip for SHA256
+      # Hash the artifact this run built instead of re-downloading the
+      # published asset: a swapped asset must not be laundered into the manifest.
+      - name: Download win-x64 build artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-win-x64
+          path: artifacts/release
+
+      - name: Compute installer SHA256
         shell: pwsh
-        env:
-          VERSION: ${{ needs.setup.outputs.version }}
-          GH_TOKEN: ${{ github.token }}
         run: |
-          $zipUrl = "https://github.com/${{ github.repository }}/releases/download/v$env:VERSION/dotver-win-x64-portable.zip"
-          Invoke-WebRequest -Uri $zipUrl -OutFile "dotver-win-x64-portable.zip"
-          $sha256 = (Get-FileHash "dotver-win-x64-portable.zip" -Algorithm SHA256).Hash.ToUpper()
-          echo "INSTALLER_SHA256=$sha256" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $sha256 = (Get-FileHash "artifacts/release/dotver-win-x64-portable.zip" -Algorithm SHA256).Hash.ToUpper()
+          "INSTALLER_SHA256=$sha256" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Generate manifest
         shell: pwsh
         env:
           VERSION: ${{ needs.setup.outputs.version }}
+          REPOSITORY: ${{ github.repository }}
+          PACKAGE_IDENTIFIER: ${{ vars.WINGET_PACKAGE_IDENTIFIER }}
         run: |
-          $packageIdentifier = if ("${{ vars.WINGET_PACKAGE_IDENTIFIER }}") { "${{ vars.WINGET_PACKAGE_IDENTIFIER }}" } else { "DotVer.DotVer" }
+          $packageIdentifier = if ($env:PACKAGE_IDENTIFIER) { $env:PACKAGE_IDENTIFIER } else { "DotVer.DotVer" }
           ./.github/scripts/Generate-WingetManifest.ps1 `
             -Version $env:VERSION `
-            -Repository "${{ github.repository }}" `
+            -Repository $env:REPOSITORY `
             -PackageIdentifier $packageIdentifier `
             -InstallerSha256 $env:INSTALLER_SHA256
 
+      # Same probe pattern as npm: the token is only ever exposed to the step
+      # that needs it, never to the whole job.
+      - name: Check WinGet token
+        id: winget-token
+        shell: bash
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          if [ -n "$WINGET_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Submit to WinGet
-        if: ${{ vars.WINGET_PACKAGE_IDENTIFIER != '' && env.WINGET_TOKEN != '' }}
-        uses: vedantmgoyal9/winget-releaser@v2
+        if: ${{ vars.WINGET_PACKAGE_IDENTIFIER != '' && steps.winget-token.outputs.present == 'true' }}
+        uses: vedantmgoyal9/winget-releaser@b7370d4d152efdce803a26cc6ca9eee58cb2ad54 # v2
         with:
           identifier: ${{ vars.WINGET_PACKAGE_IDENTIFIER }}
           version: ${{ needs.setup.outputs.version }}
           release-tag: ${{ needs.setup.outputs.tag }}
-          token: ${{ env.WINGET_TOKEN }}
+          token: ${{ secrets.WINGET_TOKEN }}
 
       - name: Upload winget manifest artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: winget-manifests
           path: artifacts/winget

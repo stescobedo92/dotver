@@ -14,9 +14,11 @@ using var bootstrapProvider = services.BuildServiceProvider();
 var bootstrap = bootstrapProvider.GetRequiredService<IEnvironmentBootstrapService>();
 var registrar = new TypeRegistrar(services);
 
+// The shim path never bootstraps: every `dotnet` call would otherwise re-read
+// and possibly rewrite shell profiles and the user PATH. The shim only exists
+// because a bootstrapping command already ran.
 if (args.Length > 0 && string.Equals(args[0], "intercept", StringComparison.OrdinalIgnoreCase))
 {
-    await bootstrap.EnsureConfiguredAsync(CancellationToken.None);
     var interceptor = bootstrapProvider.GetRequiredService<IInterceptorService>();
     var interceptedArgs = args.Skip(1).ToArray();
     if (interceptedArgs.Length > 0 && interceptedArgs[0] == "--")

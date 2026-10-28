@@ -10,7 +10,7 @@ public interface IStateService
     Task<SdkInstallation> SetDefaultAsync(string token, CancellationToken cancellationToken);
     Task AddAliasAsync(string alias, string versionToken, CancellationToken cancellationToken);
     Task RemoveAliasAsync(string alias, CancellationToken cancellationToken);
-    Task RegisterRootAsync(string path, CancellationToken cancellationToken);
+    Task<string> RegisterRootAsync(string path, CancellationToken cancellationToken);
     Task<UninstallOutcome> UninstallManagedAsync(string token, CancellationToken cancellationToken);
     Task<UninstallOutcome> UninstallManagedAsync(SdkInstallation target, CancellationToken cancellationToken);
     Task<RepointResult> RepointVersionAsync(string fromVersion, string toVersion, CancellationToken cancellationToken);

@@ -48,6 +48,21 @@ public sealed class ExecServiceTests
     }
 
     [Fact]
+    public async Task Execute_RelativeExplicitPath_IsResolvedAgainstCurrentDirectoryBeforeSpawning()
+    {
+        using var sandbox = new TestSandbox(TestPlatform.Windows);
+        var sdk = sandbox.CreateSdkInstall("8.0.412", isManaged: true);
+        var harness = new Harness(sandbox, [sdk], new ProcessResult(0, string.Empty, string.Empty));
+
+        await harness.Service.ExecuteAsync("8.0", ["./tools/run.cmd", "x"], captureOutput: false, CancellationToken.None);
+
+        // The user typed the path, so it is honored, but ProcessRunner only
+        // accepts fully qualified file names.
+        var spec = Assert.Single(harness.Process.Invocations);
+        Assert.Equal(Path.GetFullPath(Path.Combine(sandbox.Root, "tools", "run.cmd")), spec.FileName);
+    }
+
+    [Fact]
     public async Task ResolveSdk_ByAlias_Works()
     {
         using var sandbox = new TestSandbox(TestPlatform.Windows);

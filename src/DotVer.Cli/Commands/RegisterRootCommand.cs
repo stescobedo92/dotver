@@ -17,8 +17,8 @@ internal sealed class RegisterRootCommand : AsyncCommandBase<RegisterRootSetting
 
     public override async Task<int> ExecuteAsync(CommandContext context, RegisterRootSettings settings)
     {
-        await _stateService.RegisterRootAsync(settings.Path, CancellationToken.None).ConfigureAwait(false);
-        Console.MarkupLine($"[green]Root registered:[/] {settings.Path}");
+        var registered = await _stateService.RegisterRootAsync(settings.Path, CancellationToken.None).ConfigureAwait(false);
+        Console.MarkupLine($"[green]Root registered:[/] {Markup.Escape(TerminalText.Sanitize(registered))}");
         return 0;
     }
 }

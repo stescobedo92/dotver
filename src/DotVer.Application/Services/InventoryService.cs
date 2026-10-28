@@ -34,6 +34,14 @@ public sealed class InventoryService : IInventoryService
                 return;
             }
 
+            // A relative hint (`.` on PATH, `register-root .`, DOTNET_ROOT=sdk)
+            // would resolve against whatever directory dotver runs in, letting a
+            // cloned repository masquerade as a dotnet root.
+            if (!Path.IsPathFullyQualified(path.Trim()))
+            {
+                return;
+            }
+
             var normalized = Path.GetFullPath(path.Trim());
             if (!Directory.Exists(normalized))
             {

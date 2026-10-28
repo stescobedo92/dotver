@@ -75,8 +75,9 @@ public sealed class ExecService : IExecService
                            requested.Contains(Path.AltDirectorySeparatorChar, StringComparison.Ordinal);
         if (hasDirectory)
         {
-            // Explicit path typed by the user: honor it as given.
-            return requested;
+            // Explicit path typed by the user: honor it, anchored to the cwd the
+            // user typed it in, because ProcessRunner only accepts absolute paths.
+            return Path.GetFullPath(requested, _environment.CurrentDirectory);
         }
 
         // Bare names must resolve from PATH, never from the current directory.
