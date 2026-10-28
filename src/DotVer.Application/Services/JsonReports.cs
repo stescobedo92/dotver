@@ -181,7 +181,8 @@ public static class JsonReports
             ["assetName"] = check.AssetName,
             ["executablePath"] = check.ExecutablePath,
             ["canSelfUpdate"] = check.CanSelfUpdate,
-            ["reason"] = check.Reason
+            ["reason"] = check.Reason,
+            ["repository"] = check.Repository
         });
     }
 

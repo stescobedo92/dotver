@@ -11,7 +11,8 @@ public sealed record SelfUpdateCheck(
     string? AssetName,
     string ExecutablePath,
     bool CanSelfUpdate,
-    string? Reason);
+    string? Reason,
+    string Repository);
 
 public sealed record SelfUpdateOutcome(
     string FromVersion,

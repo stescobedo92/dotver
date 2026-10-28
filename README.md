@@ -363,7 +363,10 @@ verifies it against the release's `checksums.txt` and atomically replaces the
 running binary (on Windows the previous image is parked as `dotver.exe.old`).
 It only applies to the standalone binary; npm and WinGet installs are updated
 through their package manager. `DOTVER_UPDATE_REPOSITORY=owner/repo` points
-a fork at its own releases.
+a fork at its own releases, but an environment variable alone never decides
+where the binary comes from: with a non-default repository, `self-update`
+refuses until you also pass `--allow-unofficial-source` and prints the
+repository it is about to trust.
 
 ```bash
 $ dotver self-uninstall             # dry run: shows every profile, PATH entry, registry value and directory it would touch

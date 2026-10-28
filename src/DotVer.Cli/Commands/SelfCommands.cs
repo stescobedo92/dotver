@@ -12,6 +12,9 @@ internal sealed class SelfUpdateSettings : JsonSettings
 
     [CommandOption("--version <VERSION>")]
     public string? Version { get; init; }
+
+    [CommandOption("--allow-unofficial-source")]
+    public bool AllowUnofficialSource { get; init; }
 }
 
 internal sealed class SelfUninstallSettings : JsonSettings
@@ -38,13 +41,14 @@ internal sealed class SelfUpdateCommand : AsyncCommandBase<SelfUpdateSettings>
         using var cancellation = CtrlCCancellation.Create();
         if (settings.Check)
         {
-            var check = await _selfUpdate.CheckAsync(settings.Version, cancellation.Token).ConfigureAwait(false);
+            var check = await _selfUpdate.CheckAsync(settings.Version, settings.AllowUnofficialSource, cancellation.Token).ConfigureAwait(false);
             if (settings.Json)
             {
                 global::System.Console.Out.WriteLine(JsonReports.ForSelfUpdateCheck(check));
                 return 0;
             }
 
+            WarnIfUnofficial(check.Repository);
             Console.MarkupLine($"Installed: [aqua]{Markup.Escape(check.CurrentVersion)}[/]  Latest: [aqua]{Markup.Escape(check.LatestVersion)}[/] ({Markup.Escape(check.Tag)})");
             Console.MarkupLine(check.UpdateAvailable
                 ? "[yellow]An update is available.[/] Run [aqua]dotver self-update[/] to install it."
@@ -57,11 +61,16 @@ internal sealed class SelfUpdateCommand : AsyncCommandBase<SelfUpdateSettings>
             return 0;
         }
 
-        var outcome = await _selfUpdate.UpdateAsync(settings.Version, cancellation.Token).ConfigureAwait(false);
+        var outcome = await _selfUpdate.UpdateAsync(settings.Version, settings.AllowUnofficialSource, cancellation.Token).ConfigureAwait(false);
         if (settings.Json)
         {
             global::System.Console.Out.WriteLine(JsonReports.ForSelfUpdate(outcome));
             return 0;
+        }
+
+        if (settings.AllowUnofficialSource)
+        {
+            WarnIfUnofficial(null);
         }
 
         if (!outcome.Updated)
@@ -78,6 +87,21 @@ internal sealed class SelfUpdateCommand : AsyncCommandBase<SelfUpdateSettings>
         }
 
         return 0;
+    }
+
+    private void WarnIfUnofficial(string? repository) => SelfUpdateWarnings.WarnIfUnofficial(Console, repository);
+}
+
+internal static class SelfUpdateWarnings
+{
+    public static void WarnIfUnofficial(IAnsiConsole console, string? repository)
+    {
+        if (repository is not null && string.Equals(repository, SelfUpdateService.DefaultRepository, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        console.MarkupLine($"[yellow]Warning:[/] updates come from {Markup.Escape(TerminalText.Sanitize(repository ?? "a non-official repository (DOTVER_UPDATE_REPOSITORY)"))}, not from {Markup.Escape(SelfUpdateService.DefaultRepository)}.");
     }
 }
 

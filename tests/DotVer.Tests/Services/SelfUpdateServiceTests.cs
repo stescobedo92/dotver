@@ -139,6 +139,33 @@ public sealed class SelfUpdateServiceTests
         Assert.Equal("older build", File.ReadAllText(environment.ProcessPath));
     }
 
+    [Fact]
+    public async Task Update_FromAnOverriddenRepository_RequiresExplicitAcknowledgement()
+    {
+        using var sandbox = new TestSandbox(TestPlatform.Linux);
+        var environment = sandbox.CreateEnvironment();
+        environment.ProductVersion = "0.3.0";
+        File.WriteAllText(environment.ProcessPath, "old");
+        // An environment variable alone must never redirect where the binary comes from.
+        environment.SetUserEnvironmentVariable(SelfUpdateService.RepositoryVariable, "someone-else/dotver-fork");
+        var feed = FeedWith("v0.4.0", ("dotver-linux-x64", "fork build"));
+        var service = new SelfUpdateService(feed, environment);
+
+        var check = await service.CheckAsync(version: null, CancellationToken.None);
+        Assert.Equal("someone-else/dotver-fork", check.Repository);
+        Assert.False(check.CanSelfUpdate);
+        Assert.Contains("--allow-unofficial-source", check.Reason, StringComparison.Ordinal);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateAsync(version: null, CancellationToken.None));
+        Assert.Equal("old", File.ReadAllText(environment.ProcessPath));
+        Assert.Empty(feed.Requests);
+
+        var outcome = await service.UpdateAsync(version: null, allowUnofficialSource: true, CancellationToken.None);
+
+        Assert.True(outcome.Updated);
+        Assert.Equal("fork build", File.ReadAllText(environment.ProcessPath));
+        Assert.Equal(["someone-else/dotver-fork"], feed.Requests.Distinct());
+    }
+
     private static FakeReleaseFeed FeedWith(string tag, params (string Name, string Content)[] assets)
     {
         var feed = new FakeReleaseFeed();
@@ -154,6 +181,8 @@ public sealed class SelfUpdateServiceTests
         public Dictionary<string, byte[]> Contents { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public string LatestTag { get; set; } = string.Empty;
+
+        public List<string> Requests { get; } = [];
 
         public void AddRelease(string tag, params (string Name, string Content)[] assets)
         {
@@ -174,13 +203,19 @@ public sealed class SelfUpdateServiceTests
             _releases[tag] = new ReleaseInfo(tag, tag.TrimStart('v'), urls);
         }
 
-        public Task<ReleaseInfo> GetLatestAsync(string repository, CancellationToken cancellationToken) =>
-            Task.FromResult(_releases[LatestTag]);
+        public Task<ReleaseInfo> GetLatestAsync(string repository, CancellationToken cancellationToken)
+        {
+            Requests.Add(repository);
+            return Task.FromResult(_releases[LatestTag]);
+        }
 
-        public Task<ReleaseInfo> GetByTagAsync(string repository, string tag, CancellationToken cancellationToken) =>
-            _releases.TryGetValue(tag, out var release)
+        public Task<ReleaseInfo> GetByTagAsync(string repository, string tag, CancellationToken cancellationToken)
+        {
+            Requests.Add(repository);
+            return _releases.TryGetValue(tag, out var release)
                 ? Task.FromResult(release)
                 : throw new InvalidOperationException($"Release {tag} not found.");
+        }
 
         public Task<byte[]> DownloadAssetAsync(string url, long maxBytes, CancellationToken cancellationToken) =>
             Task.FromResult(Contents[url]);

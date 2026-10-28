@@ -19,6 +19,14 @@ public interface ISelfUpdateService
     Task<SelfUpdateCheck> CheckAsync(string? version, CancellationToken cancellationToken);
 
     Task<SelfUpdateOutcome> UpdateAsync(string? version, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// allowUnofficialSource is required when DOTVER_UPDATE_REPOSITORY names another repository:
+    /// an environment variable alone must never decide where the binary that replaces dotver comes from.
+    /// </summary>
+    Task<SelfUpdateCheck> CheckAsync(string? version, bool allowUnofficialSource, CancellationToken cancellationToken);
+
+    Task<SelfUpdateOutcome> UpdateAsync(string? version, bool allowUnofficialSource, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -43,16 +51,34 @@ public sealed partial class SelfUpdateService : ISelfUpdateService
         _environment = environment;
     }
 
-    public async Task<SelfUpdateCheck> CheckAsync(string? version, CancellationToken cancellationToken)
+    public Task<SelfUpdateCheck> CheckAsync(string? version, CancellationToken cancellationToken) =>
+        CheckAsync(version, allowUnofficialSource: false, cancellationToken);
+
+    public Task<SelfUpdateOutcome> UpdateAsync(string? version, CancellationToken cancellationToken) =>
+        UpdateAsync(version, allowUnofficialSource: false, cancellationToken);
+
+    public async Task<SelfUpdateCheck> CheckAsync(string? version, bool allowUnofficialSource, CancellationToken cancellationToken)
     {
-        var release = await ResolveReleaseAsync(version, cancellationToken).ConfigureAwait(false);
-        return BuildCheck(release, version is not null);
+        var repository = ResolveRepository();
+        if (RefuseUnofficial(repository, allowUnofficialSource) is { } refusal)
+        {
+            return refusal;
+        }
+
+        var release = await ResolveReleaseAsync(repository, version, cancellationToken).ConfigureAwait(false);
+        return BuildCheck(release, repository, version is not null);
     }
 
-    public async Task<SelfUpdateOutcome> UpdateAsync(string? version, CancellationToken cancellationToken)
+    public async Task<SelfUpdateOutcome> UpdateAsync(string? version, bool allowUnofficialSource, CancellationToken cancellationToken)
     {
-        var release = await ResolveReleaseAsync(version, cancellationToken).ConfigureAwait(false);
-        var check = BuildCheck(release, version is not null);
+        var repository = ResolveRepository();
+        if (RefuseUnofficial(repository, allowUnofficialSource) is { } refusal)
+        {
+            throw new InvalidOperationException(refusal.Reason);
+        }
+
+        var release = await ResolveReleaseAsync(repository, version, cancellationToken).ConfigureAwait(false);
+        var check = BuildCheck(release, repository, version is not null);
         if (!check.CanSelfUpdate)
         {
             throw new InvalidOperationException(check.Reason);
@@ -93,9 +119,29 @@ public sealed partial class SelfUpdateService : ISelfUpdateService
         return new SelfUpdateOutcome(check.CurrentVersion, release.Version, check.ExecutablePath, assetName, actual, Updated: true, note);
     }
 
-    private async Task<ReleaseInfo> ResolveReleaseAsync(string? version, CancellationToken cancellationToken)
+    // The gate runs before any network call: a refused source is never even contacted.
+    private SelfUpdateCheck? RefuseUnofficial(string repository, bool allowUnofficialSource)
     {
-        var repository = ResolveRepository();
+        if (allowUnofficialSource || string.Equals(repository, DefaultRepository, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return new SelfUpdateCheck(
+            _environment.ProductVersion,
+            "unknown",
+            "unknown",
+            UpdateAvailable: false,
+            AssetNameForHost(),
+            _environment.ProcessPath,
+            CanSelfUpdate: false,
+            $"{RepositoryVariable} points updates at '{repository}' instead of the official {DefaultRepository}. " +
+            "Its checksums.txt is only as trustworthy as that repository, so re-run with --allow-unofficial-source if this is intended, or unset the variable.",
+            repository);
+    }
+
+    private async Task<ReleaseInfo> ResolveReleaseAsync(string repository, string? version, CancellationToken cancellationToken)
+    {
         if (string.IsNullOrWhiteSpace(version))
         {
             return await _feed.GetLatestAsync(repository, cancellationToken).ConfigureAwait(false);
@@ -111,7 +157,7 @@ public sealed partial class SelfUpdateService : ISelfUpdateService
         return await _feed.GetByTagAsync(repository, tag, cancellationToken).ConfigureAwait(false);
     }
 
-    private SelfUpdateCheck BuildCheck(ReleaseInfo release, bool explicitVersion)
+    private SelfUpdateCheck BuildCheck(ReleaseInfo release, string repository, bool explicitVersion)
     {
         var current = _environment.ProductVersion;
         var assetName = AssetNameForHost();
@@ -121,7 +167,7 @@ public sealed partial class SelfUpdateService : ISelfUpdateService
             ? CompareVersions(release.Version, current) != 0
             : CompareVersions(release.Version, current) > 0;
 
-        return new SelfUpdateCheck(current, release.Version, release.Tag, updateAvailable, assetName, executable, canSelfUpdate, reason);
+        return new SelfUpdateCheck(current, release.Version, release.Tag, updateAvailable, assetName, executable, canSelfUpdate, reason, repository);
     }
 
     private (bool CanSelfUpdate, string? Reason) Capability(string executable, string? assetName)
