@@ -85,6 +85,15 @@ unexpanded so its `REG_EXPAND_SZ` kind survives.
 
 The parent terminal session cannot be modified directly from a child process on Windows; therefore the persistent change is fully reflected only when opening a new terminal.
 
+## Services added in 0.4.0
+
+- `SelectionService.ExplainAsync` builds the `SelectionTrace` behind `dotver explain`; `ResolveAsync` is derived from the same trace so both can never disagree.
+- `WorkspaceService.PlanEnsureAsync` backs `scan --ensure --dry-run`; `EnsureRecursiveAsync` reuses it.
+- `IdeSettingsService` writes `dotnet.dotnetPath`/`omnisharp.dotnetPath` into `.vscode/settings.json` through the link-safe helpers shared from `GlobalJsonService`.
+- `ToolsManifestStore` + `ToolSyncService` keep `~/.dotver/tools.json` and re-run `dotnet tool update --global` with the installed host; `HookRunner` executes `~/.dotver/hooks/<event>` without a shell.
+- `InstallService.InstallFromArchiveAsync` (offline `--from`), `ConfigDownloadSources` + `MirrorService` (mirror in `config.json`, hosts added to the download allow-list explicitly).
+- `SelfUpdateService` + `GitHubReleaseFeed` (release metadata and assets from GitHub hosts only, verified against `checksums.txt`), `SelfUninstallService` + `EnvironmentBootstrapService.RemoveAsync` (reverse of the bootstrap, scoped to this `DOTVER_HOME`).
+
 ## Design Decisions
 
 - Persistent state lives in `~/.dotver/config.json`.
