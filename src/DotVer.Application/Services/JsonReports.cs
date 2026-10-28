@@ -89,6 +89,26 @@ public static class JsonReports
         });
     }
 
+    public static string ForIdeSettings(IdeSettingsResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var keys = new JsonArray();
+        foreach (var key in result.KeysWritten)
+        {
+            keys.Add(key);
+        }
+
+        return Root(new JsonObject
+        {
+            ["filePath"] = result.FilePath,
+            ["created"] = result.Created,
+            ["hostRoot"] = result.HostRoot,
+            ["keys"] = keys,
+            ["commentsDropped"] = result.CommentsDropped
+        });
+    }
+
     public static string ForRemote(IReadOnlyList<ReleaseChannel> channels)
     {
         ArgumentNullException.ThrowIfNull(channels);

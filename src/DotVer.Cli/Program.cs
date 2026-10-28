@@ -258,7 +258,7 @@ app.Configure(config =>
         .WithDescription("Opens an interactive shell pinned to one SDK (nothing persists after exit).");
 
     config.AddCommand<EnvCommand>("env")
-        .WithDescription("Prints shell exports (DOTNET_ROOT, DOTVER_VERSION, PATH) for an SDK, or writes them with --github.");
+        .WithDescription("Prints shell exports (DOTNET_ROOT, DOTVER_VERSION, PATH) for an SDK, writes them with --github, or points VS Code at the SDK with --vscode [--dir <path>].");
 
     config.AddCommand<CompletionsCommand>("completions")
         .WithDescription("Prints the shell completion script for powershell, bash, zsh or fish.");

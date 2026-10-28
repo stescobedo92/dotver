@@ -97,7 +97,8 @@ public sealed partial class GlobalJsonService : IGlobalJsonService
         }
     }
 
-    private static FileStream? OpenRegularFile(string path) =>
+    // Shared with other services that edit files inside a (possibly untrusted) repository.
+    internal static FileStream? OpenRegularFile(string path) =>
         OperatingSystem.IsWindows() ? OpenRegularFileWindows(path) : OpenRegularFileUnix(path);
 
     private static FileStream? OpenRegularFileWindows(string path)
@@ -248,19 +249,19 @@ public sealed partial class GlobalJsonService : IGlobalJsonService
     }
 
     // Utf8JsonReader does not skip a byte-order mark (File.ReadAllText did).
-    private static ReadOnlyMemory<byte> StripUtf8Bom(byte[] bytes) =>
+    internal static ReadOnlyMemory<byte> StripUtf8Bom(byte[] bytes) =>
         bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF
             ? bytes.AsMemory(3)
             : bytes.AsMemory();
 
-    private static byte[]? ReadBounded(Stream stream)
+    internal static byte[]? ReadBounded(Stream stream, long maxBytes = MaxGlobalJsonBytes)
     {
         using var buffer = new MemoryStream();
         var chunk = new byte[81920];
         int read;
         while ((read = stream.Read(chunk, 0, chunk.Length)) > 0)
         {
-            if (buffer.Length + read > MaxGlobalJsonBytes)
+            if (buffer.Length + read > maxBytes)
             {
                 return null;
             }
@@ -456,10 +457,10 @@ public sealed partial class GlobalJsonService : IGlobalJsonService
             ?? throw new InvalidOperationException($"'{path}' does not contain a JSON object; refusing to overwrite it.");
     }
 
-    private static void WriteAtomically(string target, string content)
+    internal static void WriteAtomically(string target, string content)
     {
         var directory = Path.GetDirectoryName(target)!;
-        var temp = Path.Combine(directory, $".global.json.{Guid.NewGuid():N}.tmp");
+        var temp = Path.Combine(directory, $".{Path.GetFileName(target)}.{Guid.NewGuid():N}.tmp");
         try
         {
             // CreateNew: never write through a pre-planted file/symlink at the temp path.

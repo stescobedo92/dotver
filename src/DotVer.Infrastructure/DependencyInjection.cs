@@ -40,6 +40,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IShellService, ShellService>();
         services.AddSingleton<IMatrixService, MatrixService>();
         services.AddSingleton<IInfoService, InfoService>();
+        services.AddSingleton<IIdeSettingsService, IdeSettingsService>();
 
         // Dedicated metadata client: redirects are never followed, so a
         // poisoned endpoint cannot bounce requests to internal services.

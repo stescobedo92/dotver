@@ -10,17 +10,20 @@ internal sealed class EnvCommand : AsyncCommandBase<EnvSettings>
     private readonly IExecService _execService;
     private readonly ISelectionService _selectionService;
     private readonly IEnvironmentContext _environment;
+    private readonly IIdeSettingsService _ideSettingsService;
 
     public EnvCommand(
         IAnsiConsole console,
         IExecService execService,
         ISelectionService selectionService,
-        IEnvironmentContext environment)
+        IEnvironmentContext environment,
+        IIdeSettingsService ideSettingsService)
         : base(console)
     {
         _execService = execService;
         _selectionService = selectionService;
         _environment = environment;
+        _ideSettingsService = ideSettingsService;
     }
 
     public override async Task<int> ExecuteAsync(CommandContext context, EnvSettings settings)
@@ -37,9 +40,44 @@ internal sealed class EnvCommand : AsyncCommandBase<EnvSettings>
                 ?? throw new InvalidOperationException("No SDK is currently selected. Pass a token, e.g. 'dotver env 8.0'.");
         }
 
+        if (settings.Directory is not null && !settings.VsCode)
+        {
+            throw new InvalidOperationException("--dir only applies together with --vscode.");
+        }
+
+        if (settings.GitHub && settings.VsCode)
+        {
+            throw new InvalidOperationException("--github and --vscode are mutually exclusive.");
+        }
+
         if (settings.GitHub)
         {
             await WriteGitHubAsync(sdk).ConfigureAwait(false);
+            return 0;
+        }
+
+        if (settings.VsCode)
+        {
+            var directory = string.IsNullOrWhiteSpace(settings.Directory) ? _environment.CurrentDirectory : settings.Directory;
+            var result = _ideSettingsService.WriteVsCode(directory, sdk);
+            if (settings.Json)
+            {
+                global::System.Console.Out.WriteLine(JsonReports.ForIdeSettings(result));
+                return 0;
+            }
+
+            Console.MarkupLine($"[green]VS Code configured:[/] {Markup.Escape(TerminalText.Sanitize(result.FilePath))} {(result.Created ? "[grey](created)[/]" : "[grey](updated)[/]")}");
+            foreach (var key in result.KeysWritten)
+            {
+                Console.MarkupLine($"  [aqua]{Markup.Escape(key)}[/] = {Markup.Escape(TerminalText.Sanitize(result.HostRoot))}");
+            }
+
+            if (result.CommentsDropped)
+            {
+                Console.MarkupLine("[yellow]Note:[/] comments in settings.json could not be preserved.");
+            }
+
+            Console.MarkupLine("[grey]Reload the VS Code window so the C# extension picks up the new SDK. For Rider or Visual Studio launch the IDE from the SDK instead: dotver exec <version> -- rider64 .[/]");
             return 0;
         }
 

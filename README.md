@@ -246,6 +246,29 @@ $ dotver doctor --json                           # non-zero exit while issues re
 Every `--json` report carries `"schemaVersion": 1` and is written to raw
 stdout (no terminal wrapping), so it is safe to pipe into `jq` or a CI parser.
 
+### Point your IDE at the selected SDK
+
+Shims only reach terminals; an editor started from the desktop still uses the
+system `dotnet`. For VS Code, write the SDK host into the project settings:
+
+```bash
+$ dotver env --vscode            # uses the active selection (global.json, current, ...)
+$ dotver env 8.0 --vscode --dir ./src/MyApp
+VS Code configured: ./src/MyApp/.vscode/settings.json (created)
+  dotnet.dotnetPath = ~/.dotver/installs/8.0.412
+  omnisharp.dotnetPath = ~/.dotver/installs/8.0.412
+```
+
+Existing settings are preserved and the file is written atomically; JSONC
+comments cannot be kept and are reported when dropped. Rider and Visual
+Studio keep the .NET CLI path as an IDE setting rather than a project file,
+so launch them with the SDK already selected instead:
+
+```bash
+$ dotver exec 8.0 -- rider64 MySolution.sln
+$ dotver exec 8.0 -- devenv MySolution.sln
+```
+
 ### Shell completions
 
 ```powershell

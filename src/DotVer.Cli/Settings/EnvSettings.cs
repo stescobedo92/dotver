@@ -12,4 +12,10 @@ internal sealed class EnvSettings : JsonSettings
 
     [CommandOption("--github")]
     public bool GitHub { get; init; }
+
+    [CommandOption("--vscode")]
+    public bool VsCode { get; init; }
+
+    [CommandOption("--dir <PATH>")]
+    public string? Directory { get; init; }
 }
