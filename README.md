@@ -29,6 +29,7 @@ dotver local 8.0.412 [--roll-forward latestFeature]   # pin this project in glob
 dotver local                 # show the effective pin
 dotver local --clear         # remove this directory's pin (--parent for a parent pin)
 dotver ensure [--use]        # install the SDK pinned by global.json if missing
+dotver scan [PATH] [--ensure [--dry-run]] [--json]   # every pin in a tree; --ensure installs what is missing
 dotver alias lts 8.0.412     # reserved names (system/current/default/latest) are rejected
 dotver install 10.0.201 [--no-use] [--no-default]
 dotver install 8.0
@@ -120,6 +121,10 @@ Local -> 10.0.201
 # On a fresh clone/machine, materialize the pinned SDK in one command
 $ dotver ensure
 # (add --use to also make it the persisted current version)
+
+# Monorepo onboarding: see every pin, then install everything that is missing
+$ dotver scan --ensure --dry-run     # lists "Would install: 9.0.100, ..." and changes nothing
+$ dotver scan --ensure               # installs each distinct missing version once
 
 # Back to current/default outside the project
 $ cd ~

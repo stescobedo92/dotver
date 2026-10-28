@@ -17,3 +17,9 @@ public sealed record WorkspaceEnsureResult(
     WorkspaceScanResult Scan,
     IReadOnlyList<string> InstalledVersions,
     IReadOnlyList<string> Errors);
+
+/// <summary>What <c>scan --ensure --dry-run</c> would do: nothing is installed.</summary>
+public sealed record WorkspaceEnsurePlan(
+    WorkspaceScanResult Scan,
+    IReadOnlyList<string> MissingVersions,
+    IReadOnlyList<string> Errors);

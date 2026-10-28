@@ -35,33 +35,46 @@ public sealed class WorkspaceService : IWorkspaceService
         return ScanCore(fullRoot, inventory, cancellationToken);
     }
 
-    public async Task<WorkspaceEnsureResult> EnsureRecursiveAsync(string root, CancellationToken cancellationToken)
+    public async Task<WorkspaceEnsurePlan> PlanEnsureAsync(string root, CancellationToken cancellationToken)
     {
         var fullRoot = NormalizeRoot(root);
-        var before = await ScanAsync(fullRoot, cancellationToken).ConfigureAwait(false);
+        var scan = await ScanAsync(fullRoot, cancellationToken).ConfigureAwait(false);
 
-        var missingVersions = before.Entries
+        var missingVersions = scan.Entries
             .Where(static entry => entry.RequestedVersion is not null && !entry.Satisfied)
             .Select(static entry => entry.RequestedVersion!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static version => version, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var installed = new List<string>();
         var errors = new List<string>();
-        errors.AddRange(before.Entries
+        errors.AddRange(scan.Entries
             .Where(static entry => entry.Invalid)
             .Select(static entry => $"{Sanitize(entry.FilePath)}: invalid global.json (unreadable, linked, oversized or malformed)."));
-        if (before.Truncated)
+        if (scan.Truncated)
         {
             errors.Add("Scan was truncated; not every pin in the tree was ensured. Narrow the root directory.");
         }
+
         if (missingVersions.Count > MaxDistinctInstalls)
         {
             errors.Add($"Refusing to install {missingVersions.Count} distinct SDKs in one run (limit {MaxDistinctInstalls}); narrow the scan root.");
-            return new WorkspaceEnsureResult(before, installed, errors);
         }
 
-        foreach (var version in missingVersions)
+        return new WorkspaceEnsurePlan(scan, missingVersions, errors);
+    }
+
+    public async Task<WorkspaceEnsureResult> EnsureRecursiveAsync(string root, CancellationToken cancellationToken)
+    {
+        var plan = await PlanEnsureAsync(root, cancellationToken).ConfigureAwait(false);
+        var installed = new List<string>();
+        var errors = new List<string>(plan.Errors);
+        if (plan.MissingVersions.Count > MaxDistinctInstalls)
+        {
+            return new WorkspaceEnsureResult(plan.Scan, installed, errors);
+        }
+
+        foreach (var version in plan.MissingVersions)
         {
             try
             {
@@ -74,7 +87,7 @@ public sealed class WorkspaceService : IWorkspaceService
             }
         }
 
-        var after = await ScanAsync(fullRoot, cancellationToken).ConfigureAwait(false);
+        var after = await ScanAsync(plan.Scan.Root, cancellationToken).ConfigureAwait(false);
         if (after.Truncated)
         {
             errors.Add("Final scan was truncated; not every pin in the tree could be verified. Narrow the root directory.");

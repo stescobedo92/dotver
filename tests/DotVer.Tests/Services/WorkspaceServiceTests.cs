@@ -51,6 +51,24 @@ public sealed class WorkspaceServiceTests
     }
 
     [Fact]
+    public async Task PlanEnsure_ListsDistinctMissingVersionsWithoutInstalling()
+    {
+        using var sandbox = new TestSandbox(TestPlatform.Windows);
+        var root = CreateWorkspace(sandbox);
+        var sdk8 = sandbox.CreateSdkInstall("8.0.412", isManaged: true);
+        var install = new FakeInstall();
+        var service = new WorkspaceService(new GlobalJsonService(), new StubInventory([sdk8]), install);
+
+        var plan = await service.PlanEnsureAsync(root, CancellationToken.None);
+
+        // `scan --ensure --dry-run`: report what would be installed, touch nothing.
+        Assert.Equal(["9.0.100"], plan.MissingVersions);
+        Assert.Empty(plan.Errors);
+        Assert.Empty(install.Calls);
+        Assert.Equal(3, plan.Scan.Entries.Count);
+    }
+
+    [Fact]
     public async Task Scan_MalformedPin_IsInvalidNotSatisfied()
     {
         using var sandbox = new TestSandbox(TestPlatform.Windows);

@@ -19,11 +19,56 @@ internal sealed class ScanCommand : AsyncCommandBase<ScanSettings>
 
     public override async Task<int> ExecuteAsync(CommandContext context, ScanSettings settings)
     {
+        if (settings.DryRun && !settings.Ensure)
+        {
+            throw new InvalidOperationException("--dry-run only applies together with --ensure.");
+        }
+
         var root = string.IsNullOrWhiteSpace(settings.Path) ? _environment.CurrentDirectory : settings.Path;
         using var cancellation = CtrlCCancellation.Create();
+
+        if (settings.Ensure && settings.DryRun)
+        {
+            var plan = await _workspaceService.PlanEnsureAsync(root, cancellation.Token).ConfigureAwait(false);
+            // Same contract as a plain scan: non-zero while something is missing, so CI can gate on it.
+            var planExit = plan.MissingVersions.Count > 0 || plan.Errors.Count > 0 ? 1 : 0;
+            if (settings.Json)
+            {
+                global::System.Console.Out.WriteLine(JsonReports.ForScan(plan.Scan, errors: plan.Errors, wouldInstall: plan.MissingVersions));
+                return planExit;
+            }
+
+            Render(Console, plan.Scan);
+            Console.MarkupLine(plan.MissingVersions.Count == 0
+                ? "[green]Every pin is satisfied; nothing to install.[/]"
+                : $"[yellow]Would install:[/] {Markup.Escape(string.Join(", ", plan.MissingVersions))} [grey](dry run: drop --dry-run to install)[/]");
+            RenderErrors(plan.Errors);
+            return planExit;
+        }
+
+        if (settings.Ensure)
+        {
+            var result = await _workspaceService.EnsureRecursiveAsync(root, cancellation.Token).ConfigureAwait(false);
+            var stillMissing = CountMissing(result.Scan);
+            var ensureExit = stillMissing > 0 || result.Errors.Count > 0 ? 1 : 0;
+            if (settings.Json)
+            {
+                global::System.Console.Out.WriteLine(JsonReports.ForScan(result.Scan, result.InstalledVersions, result.Errors));
+                return ensureExit;
+            }
+
+            Render(Console, result.Scan);
+            foreach (var version in result.InstalledVersions)
+            {
+                Console.MarkupLine($"[green]Installed[/] [aqua]{Markup.Escape(version)}[/]");
+            }
+
+            RenderErrors(result.Errors);
+            return ensureExit;
+        }
+
         var scan = await _workspaceService.ScanAsync(root, cancellation.Token).ConfigureAwait(false);
-        var missing = scan.Entries.Count(static entry => entry.Invalid || entry.RequestedVersion is not null && !entry.Satisfied);
-        var exitCode = missing > 0 || scan.Truncated ? 1 : 0;
+        var exitCode = CountMissing(scan) > 0 || scan.Truncated ? 1 : 0;
 
         if (settings.Json)
         {
@@ -33,6 +78,17 @@ internal sealed class ScanCommand : AsyncCommandBase<ScanSettings>
 
         Render(Console, scan);
         return exitCode;
+    }
+
+    private static int CountMissing(WorkspaceScanResult scan) =>
+        scan.Entries.Count(static entry => entry.Invalid || entry.RequestedVersion is not null && !entry.Satisfied);
+
+    private void RenderErrors(IReadOnlyList<string> errors)
+    {
+        foreach (var error in errors)
+        {
+            Console.MarkupLine($"[red]Error:[/] {Markup.Escape(error)}");
+        }
     }
 
     internal static void Render(IAnsiConsole console, WorkspaceScanResult scan)

@@ -208,7 +208,7 @@ app.Configure(config =>
         .WithDescription("Installs the SDK pinned by global.json if it is missing.");
 
     config.AddCommand<ScanCommand>("scan")
-        .WithDescription("Scans a directory tree for global.json pins and reports which are satisfied. Exits non-zero if any pin is missing.");
+        .WithDescription("Scans a directory tree for global.json pins and reports which are satisfied; --ensure installs the missing SDKs (--dry-run only lists them). Exits non-zero if any pin is missing.");
 
     config.AddCommand<InstallCommand>("install")
         .WithDescription("Installs an isolated SDK using the official .NET install script.");

@@ -297,7 +297,11 @@ public static class JsonReports
         return Root(new JsonObject { ["sdks"] = items });
     }
 
-    public static string ForScan(WorkspaceScanResult scan, IReadOnlyList<string>? installedVersions = null, IReadOnlyList<string>? errors = null)
+    public static string ForScan(
+        WorkspaceScanResult scan,
+        IReadOnlyList<string>? installedVersions = null,
+        IReadOnlyList<string>? errors = null,
+        IReadOnlyList<string>? wouldInstall = null)
     {
         ArgumentNullException.ThrowIfNull(scan);
 
@@ -342,6 +346,17 @@ public static class JsonReports
             }
 
             payload["errors"] = errorItems;
+        }
+
+        if (wouldInstall is not null)
+        {
+            var planned = new JsonArray();
+            foreach (var version in wouldInstall)
+            {
+                planned.Add(version);
+            }
+
+            payload["wouldInstall"] = planned;
         }
 
         return Root(payload);

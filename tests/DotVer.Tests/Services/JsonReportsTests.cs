@@ -37,6 +37,21 @@ public sealed class JsonReportsTests
     }
 
     [Fact]
+    public void ForScan_WithPlannedVersions_EmitsWouldInstall()
+    {
+        var scan = new WorkspaceScanResult(
+            "/repo",
+            [new WorkspacePinEntry("/repo/global.json", "9.0.100", null, null, Satisfied: false)],
+            Truncated: false);
+
+        var json = JsonReports.ForScan(scan, wouldInstall: ["9.0.100"]);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal("9.0.100", doc.RootElement.GetProperty("wouldInstall")[0].GetString());
+        Assert.False(doc.RootElement.TryGetProperty("installedVersions", out _));
+    }
+
+    [Fact]
     public void ForDoctor_IncludesWarningsAliasesAndCounts()
     {
         using var sandbox = new TestSandbox(TestPlatform.Windows);
