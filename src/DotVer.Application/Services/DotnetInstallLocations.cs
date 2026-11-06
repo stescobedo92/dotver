@@ -111,7 +111,9 @@ public static class DotnetInstallLocations
                 return;
             }
 
-            var normalized = path.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            // Trim both separators regardless of the host: the registry value
+            // is Windows-shaped even when dotver inspects it from elsewhere.
+            var normalized = path.Trim().TrimEnd('\\', '/');
             if (normalized.Length == 0)
             {
                 normalized = path.Trim();
