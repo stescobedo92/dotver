@@ -152,6 +152,9 @@ public sealed class InstallServiceTests
         public Task<string> GetStringAsync(string url, CancellationToken cancellationToken) =>
             Task.FromResult(payload);
 
+        public Task<long> DownloadToFileAsync(string url, string destinationPath, long maxBytes, Action<long, long?>? onProgress, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("Streaming downloads are not used by this test.");
+
         public Task DownloadFileAsync(string url, string destinationPath, CancellationToken cancellationToken)
         {
             if (!allowDownloads)

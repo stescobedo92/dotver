@@ -258,6 +258,42 @@ public static class JsonReports
         return Root(new JsonObject { ["channels"] = items });
     }
 
+    public static string ForDownload(DownloadBatchResult result, bool dryRun)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var items = new JsonArray();
+        foreach (var entry in result.Entries)
+        {
+            var status = entry.Error is not null
+                ? "failed"
+                : entry.Download is null
+                    ? "planned"
+                    : entry.Download.SkippedExisting ? "already-present" : "downloaded";
+            items.Add(new JsonObject
+            {
+                ["requested"] = entry.RequestedToken,
+                ["rid"] = entry.Rid,
+                ["version"] = entry.ResolvedVersion,
+                ["fileName"] = entry.Archive?.FileName,
+                ["url"] = entry.Archive?.Url,
+                ["sha512"] = entry.Archive?.Sha512,
+                ["status"] = status,
+                ["path"] = entry.Download?.Path,
+                ["bytes"] = entry.Download?.Bytes,
+                ["error"] = entry.Error
+            });
+        }
+
+        return Root(new JsonObject
+        {
+            ["dryRun"] = dryRun,
+            ["outputDirectory"] = result.OutputDirectory,
+            ["allSucceeded"] = result.AllSucceeded,
+            ["entries"] = items
+        });
+    }
+
     public static string ForDoctor(
         IReadOnlyList<SdkInstallation> inventory,
         SdkSelection selection,

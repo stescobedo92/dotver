@@ -94,43 +94,81 @@ public sealed partial class SystemEnvironmentContext : IEnvironmentContext
             .ToList();
     }
 
+    // The order mirrors the host: the registered global location first (registry
+    // on Windows, /etc/dotnet/install_location on Unix), then the default root,
+    // then the places dotnet-install drops a user-local copy.
     public IReadOnlyList<string> GetKnownDotnetRoots()
     {
+        var roots = new List<string>();
+        foreach (var location in DotnetInstallLocations.Resolve(this, ReadRegistryInstallLocation, ReadInstallLocationFile))
+        {
+            roots.Add(location.Path);
+        }
+
         if (!IsWindows)
         {
-            var unixRoots = new List<string> { "/usr/share/dotnet", "/usr/local/share/dotnet", "/usr/lib/dotnet" };
+            roots.Add("/usr/share/dotnet");
+            roots.Add("/usr/local/share/dotnet");
+            roots.Add("/usr/lib/dotnet");
 
             // dotnet-install.sh installs here when --install-dir is omitted.
             var home = HomeDirectory;
             if (!string.IsNullOrWhiteSpace(home))
             {
-                unixRoots.Add(Path.Combine(home, ".dotnet"));
+                roots.Add(Path.Combine(home, ".dotnet"));
+            }
+        }
+        else
+        {
+            var programFilesX86 = Environment.GetEnvironmentVariable("ProgramFiles(x86)");
+            if (!string.IsNullOrWhiteSpace(programFilesX86))
+            {
+                roots.Add(Path.Combine(programFilesX86, "dotnet"));
             }
 
-            return unixRoots;
+            // dotnet-install.ps1 installs here when -InstallDir is omitted.
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (!string.IsNullOrWhiteSpace(localAppData))
+            {
+                roots.Add(Path.Combine(localAppData, "Microsoft", "dotnet"));
+            }
         }
 
-        var roots = new List<string>();
-        var programFiles = Environment.GetEnvironmentVariable("ProgramFiles");
-        if (!string.IsNullOrWhiteSpace(programFiles))
+        return roots.Distinct(IsWindows ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal).ToList();
+    }
+
+    // hostfxr opens HKLM\SOFTWARE\dotnet\Setup\InstalledVersions\<arch> through
+    // the 32-bit view (KEY_WOW64_32KEY), so on 64-bit Windows the value lives
+    // under WOW6432Node; RegistryView.Registry32 reproduces exactly that.
+    private static string? ReadRegistryInstallLocation(string keyPath)
+    {
+        if (!OperatingSystem.IsWindows())
         {
-            roots.Add(Path.Combine(programFiles, "dotnet"));
+            return null;
         }
 
-        var programFilesX86 = Environment.GetEnvironmentVariable("ProgramFiles(x86)");
-        if (!string.IsNullOrWhiteSpace(programFilesX86))
+        try
         {
-            roots.Add(Path.Combine(programFilesX86, "dotnet"));
+            using var hklm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry32);
+            using var key = hklm.OpenSubKey(keyPath, writable: false);
+            return key?.GetValue(DotnetInstallLocations.WindowsRegistryValueName) as string;
         }
-
-        // dotnet-install.ps1 installs here when -InstallDir is omitted.
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (!string.IsNullOrWhiteSpace(localAppData))
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Security.SecurityException)
         {
-            roots.Add(Path.Combine(localAppData, "Microsoft", "dotnet"));
+            return null;
         }
+    }
 
-        return roots;
+    private static string? ReadInstallLocationFile(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? File.ReadAllText(path) : null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     public string? GetEnvironmentVariable(string name) => Environment.GetEnvironmentVariable(name);

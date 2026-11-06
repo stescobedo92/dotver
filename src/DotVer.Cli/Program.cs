@@ -52,6 +52,8 @@ var isEach = args.Length > 0 && string.Equals(args[0], "each", StringComparison.
 var isExplain = args.Length > 0 && string.Equals(args[0], "explain", StringComparison.OrdinalIgnoreCase);
 var isTools = args.Length > 0 && string.Equals(args[0], "tools", StringComparison.OrdinalIgnoreCase);
 var isMirror = args.Length > 0 && string.Equals(args[0], "mirror", StringComparison.OrdinalIgnoreCase);
+// download only writes archives into the chosen directory; it must stay side-effect free.
+var isDownload = args.Length > 0 && string.Equals(args[0], "download", StringComparison.OrdinalIgnoreCase);
 // self-uninstall must never re-bootstrap what it is about to remove.
 var isSelf = args.Length > 0 && (string.Equals(args[0], "self-update", StringComparison.OrdinalIgnoreCase) || string.Equals(args[0], "self-uninstall", StringComparison.OrdinalIgnoreCase));
 // For exec/each, only an immediate `exec|each --help` is dotver help; later --help belongs to the child.
@@ -60,7 +62,7 @@ var wantsHelp = isExec || isEach
     : args.Contains("--help", StringComparer.OrdinalIgnoreCase) || args.Contains("-h", StringComparer.OrdinalIgnoreCase);
 
 // exec/which/completions resolve directly and must stay side-effect free for scripts.
-if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions && !isAudit && !isScan && !isShell && !isEnv && !isEach && !isExplain && !isTools && !isMirror && !isSelf)
+if (!wantsHelp && !isExec && !isWhich && !isComplete && !isCompletions && !isAudit && !isScan && !isShell && !isEnv && !isEach && !isExplain && !isTools && !isMirror && !isDownload && !isSelf)
 {
     await bootstrap.EnsureConfiguredAsync(CancellationToken.None);
 }
@@ -219,7 +221,10 @@ app.Configure(config =>
         .WithDescription("Scans a directory tree for global.json pins and reports which are satisfied; --ensure installs the missing SDKs (--dry-run only lists them). Exits non-zero if any pin is missing.");
 
     config.AddCommand<InstallCommand>("install")
-        .WithDescription("Installs an isolated SDK using the official .NET install script (or a local archive with --from <zip|tar.gz> --sha256|--sha512 <hex>), then syncs recorded global tools (--no-tools skips) and runs the post-install hook.");
+        .WithDescription("Installs one or more isolated SDKs (dotver install 8.0 9.0 lts) using the official .NET install script, or a single local archive with --from <zip|tar.gz> --sha256|--sha512 <hex>; then syncs recorded global tools (--no-tools skips) and runs the post-install hook.");
+
+    config.AddCommand<DownloadCommand>("download")
+        .WithDescription("Downloads the official SDK archives for one or more versions and RIDs (default: this machine's RID), verifies their SHA-512 and writes .sha512 sidecars: dotver download 8.0 9.0 --rid linux-x64 --rid win-x64 --out ./archives");
 
     config.AddBranch("mirror", mirror =>
     {

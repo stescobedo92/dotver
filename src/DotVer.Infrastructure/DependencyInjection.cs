@@ -32,6 +32,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IShimService, ShimService>();
         services.AddSingleton<IEnvironmentBootstrapService, EnvironmentBootstrapService>();
         services.AddSingleton<IInstallService, InstallService>();
+        services.AddSingleton<ISdkDownloadService, SdkDownloadService>();
         services.AddSingleton<IStateService, StateService>();
         services.AddSingleton<IEnsureService, EnsureService>();
         services.AddSingleton<IExecService, ExecService>();

@@ -61,7 +61,48 @@ public sealed class HttpResourceClient : IHttpResourceClient
         await File.WriteAllBytesAsync(destinationPath, bytes, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<long> DownloadToFileAsync(string url, string destinationPath, long maxBytes, Action<long, long?>? onProgress, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxBytes);
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
+
+        using var response = await SendAsync(url, cancellationToken).ConfigureAwait(false);
+        var declared = response.Content.Headers.ContentLength;
+        if (declared is > 0 && declared > maxBytes)
+        {
+            throw new InvalidOperationException("The response is unexpectedly large; refusing to read it.");
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(destinationPath))!);
+        long total = 0;
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        await using var file = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16, useAsync: true);
+        var chunk = new byte[1 << 16];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            total += read;
+            if (total > maxBytes)
+            {
+                throw new InvalidOperationException("The response is unexpectedly large; refusing to read it.");
+            }
+
+            await file.WriteAsync(chunk.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+            onProgress?.Invoke(total, declared);
+        }
+
+        return total;
+    }
+
     private async Task<byte[]> FetchAsync(string url, CancellationToken cancellationToken)
+    {
+        using var response = await SendAsync(url, cancellationToken).ConfigureAwait(false);
+        return await ReadCappedAsync(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Validates the request and every redirect hop against the allow-list and
+    // returns the first successful non-redirect response with only its headers read.
+    private async Task<HttpResponseMessage> SendAsync(string url, CancellationToken cancellationToken)
     {
         // A configured mirror widens the allow-list by exactly its own host(s).
         var allowedHosts = _sources is null
@@ -71,25 +112,34 @@ public sealed class HttpResourceClient : IHttpResourceClient
         for (var hop = 0; ; hop++)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-            using var response = await _httpClient
+            var response = await _httpClient
                 .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
                 .ConfigureAwait(false);
 
-            if (IsRedirect(response.StatusCode))
+            try
             {
-                if (hop >= MaxRedirects)
+                if (IsRedirect(response.StatusCode))
                 {
-                    throw new InvalidOperationException($"Too many redirects while fetching from {uri.Host}.");
+                    if (hop >= MaxRedirects)
+                    {
+                        throw new InvalidOperationException($"Too many redirects while fetching from {uri.Host}.");
+                    }
+
+                    var location = response.Headers.Location
+                        ?? throw new InvalidOperationException($"Redirect from {uri.Host} did not carry a Location header.");
+                    uri = ValidateUri(new Uri(uri, location).AbsoluteUri, "redirect target", allowedHosts);
+                    response.Dispose();
+                    continue;
                 }
 
-                var location = response.Headers.Location
-                    ?? throw new InvalidOperationException($"Redirect from {uri.Host} did not carry a Location header.");
-                uri = ValidateUri(new Uri(uri, location).AbsoluteUri, "redirect target", allowedHosts);
-                continue;
+                response.EnsureSuccessStatusCode();
+                return response;
             }
-
-            response.EnsureSuccessStatusCode();
-            return await ReadCappedAsync(response, cancellationToken).ConfigureAwait(false);
+            catch
+            {
+                response.Dispose();
+                throw;
+            }
         }
     }
 
