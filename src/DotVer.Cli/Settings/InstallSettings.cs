@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Spectre.Console.Cli;
 
 namespace DotVer.Cli;
@@ -5,7 +6,8 @@ namespace DotVer.Cli;
 internal sealed class InstallSettings : CommandSettings
 {
     [CommandArgument(0, "<VERSION_OR_CHANNEL>")]
-    public string VersionOrChannel { get; init; } = string.Empty;
+    [Description("Versions or channels to install, in order: 8.0.412, 8.0, lts, sts, latest. Several can be given: dotver install 8.0 9.0 10.0")]
+    public string[] VersionsOrChannels { get; init; } = [];
 
     [CommandOption("--no-use")]
     public bool NoUse { get; init; }

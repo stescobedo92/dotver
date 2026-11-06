@@ -128,6 +128,57 @@ public sealed partial class InstallService : IInstallService
             false);
     }
 
+    public async Task<MultiInstallResult> InstallManyAsync(
+        IReadOnlyList<string> tokens,
+        InstallOptions? options,
+        IProgress<string>? progress,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(tokens);
+        var architecture = Architectures.Normalize(options?.Architecture, _environment.RuntimeArchitecture);
+        var requested = tokens
+            .Select(static token => token?.Trim() ?? string.Empty)
+            .Where(static token => token.Length > 0)
+            .ToList();
+        if (requested.Count == 0)
+        {
+            throw new InvalidOperationException("Pass at least one version or channel: dotver install 8.0 9.0 lts");
+        }
+
+        var entries = new List<MultiInstallEntry>(requested.Count);
+        var produced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var token in requested)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                progress?.Report($"Resolving {token}");
+                var plan = await ResolveInstallPlanAsync(token, cancellationToken).ConfigureAwait(false);
+                if (!produced.Add(plan.ResolvedVersion))
+                {
+                    // `8.0` and `8.0.412` can name the same SDK: install it once.
+                    entries.Add(new MultiInstallEntry(token, plan, null, null, Duplicate: true));
+                    continue;
+                }
+
+                progress?.Report($"Installing {plan.ResolvedVersion} ({architecture})");
+                var outcome = await InstallAsync(token, options, cancellationToken).ConfigureAwait(false);
+                entries.Add(new MultiInstallEntry(token, plan, outcome, null));
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or IOException or UnauthorizedAccessException or HttpRequestException or JsonException)
+            {
+                // One bad token must not abort the others; the caller reports it.
+                entries.Add(new MultiInstallEntry(token, null, null, exception.Message));
+            }
+        }
+
+        return new MultiInstallResult(entries);
+    }
+
     public async Task<RuntimeInstallOutcome> InstallRuntimeAsync(
         string versionOrChannel,
         string runtime,

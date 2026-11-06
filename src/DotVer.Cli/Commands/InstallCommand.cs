@@ -34,11 +34,25 @@ internal sealed class InstallCommand : AsyncCommandBase<InstallSettings>
 
     public override async Task<int> ExecuteAsync(CommandContext context, InstallSettings settings)
     {
+        var tokens = settings.VersionsOrChannels
+            .Select(static token => token.Trim())
+            .Where(static token => token.Length > 0)
+            .ToArray();
+        if (tokens.Length == 0)
+        {
+            throw new InvalidOperationException("Pass at least one version or channel: dotver install 8.0 9.0 lts");
+        }
+
         var offline = !string.IsNullOrWhiteSpace(settings.From);
         var checksum = ResolveChecksum(settings, offline);
         if (offline && !string.IsNullOrWhiteSpace(settings.Runtime))
         {
             throw new InvalidOperationException("--from installs SDK archives only; runtime archives are not supported.");
+        }
+
+        if ((offline || !string.IsNullOrWhiteSpace(settings.Runtime)) && tokens.Length > 1)
+        {
+            throw new InvalidOperationException("--from and --runtime take exactly one version; several versions are only supported for SDK installs from the network.");
         }
 
         if (!string.IsNullOrWhiteSpace(settings.Runtime))
@@ -49,12 +63,12 @@ internal sealed class InstallCommand : AsyncCommandBase<InstallSettings>
             }
 
             var runtimeOutcome = await _installService.InstallRuntimeAsync(
-                settings.VersionOrChannel, settings.Runtime, settings.Architecture, CancellationToken.None).ConfigureAwait(false);
+                tokens[0], settings.Runtime, settings.Architecture, CancellationToken.None).ConfigureAwait(false);
             var runtimeSummary = new Table().Border(TableBorder.Rounded);
             runtimeSummary.AddColumn("Step");
             runtimeSummary.AddColumn("Value");
             runtimeSummary.AddRow(new Text("Runtime"), new Text(runtimeOutcome.Runtime));
-            runtimeSummary.AddRow(new Text("Requested"), new Text(TerminalText.Sanitize(settings.VersionOrChannel)));
+            runtimeSummary.AddRow(new Text("Requested"), new Text(TerminalText.Sanitize(tokens[0])));
             runtimeSummary.AddRow(new Text("Status"), new Text(runtimeOutcome.WasAlreadyInstalled ? "Already installed" : "Installed"));
             runtimeSummary.AddRow(new Text("Installed versions"), new Text(string.Join(", ", runtimeOutcome.InstalledVersions)));
             runtimeSummary.AddRow(new Text("Managed root"), new Text(TerminalText.Sanitize(runtimeOutcome.HostRoot)));
@@ -62,12 +76,12 @@ internal sealed class InstallCommand : AsyncCommandBase<InstallSettings>
             return 0;
         }
 
-        InstallPlan? plan = null;
-        InstallOutcome? outcome = null;
+        var options = new InstallOptions(settings.Architecture);
+        MultiInstallResult? result = null;
         EnvironmentBootstrapResult? bootstrap = null;
         SdkInstallation? selected = null;
-        ToolSyncResult? toolSync = null;
-        HookRunResult? hook = null;
+        var toolSyncs = new List<(InstallOutcome Outcome, ToolSyncResult Sync)>();
+        var hooks = new List<(InstallOutcome Outcome, HookRunResult Hook)>();
 
         await Console.Progress()
             .AutoClear(false)
@@ -76,119 +90,223 @@ internal sealed class InstallCommand : AsyncCommandBase<InstallSettings>
                 if (offline)
                 {
                     var archiveTask = ctx.AddTask("[green]Verifying and extracting the archive[/]");
-                    outcome = await _installService.InstallFromArchiveAsync(
-                        settings.VersionOrChannel, settings.From!, checksum!, new InstallOptions(settings.Architecture), CancellationToken.None).ConfigureAwait(false);
-                    plan = outcome.Plan;
+                    var outcome = await _installService.InstallFromArchiveAsync(
+                        tokens[0], settings.From!, checksum!, options, CancellationToken.None).ConfigureAwait(false);
+                    result = new MultiInstallResult([new MultiInstallEntry(tokens[0], outcome.Plan, outcome, null)]);
                     archiveTask.Value = 100;
                 }
                 else
                 {
-                    var resolveTask = ctx.AddTask("[green]Resolving version or channel[/]");
-                    plan = await _installService.ResolveInstallPlanAsync(settings.VersionOrChannel, CancellationToken.None).ConfigureAwait(false);
-                    resolveTask.Value = 100;
+                    var installTask = ctx.AddTask(
+                        tokens.Length == 1
+                            ? $"[green]Installing {Markup.Escape(tokens[0])}[/]"
+                            : $"[green]Installing {tokens.Length} SDKs[/]",
+                        maxValue: tokens.Length);
+                    installTask.IsIndeterminate = true;
+                    var progress = new InlineProgress<string>(message => installTask.Description = "[green]" + Markup.Escape(message) + "[/]");
 
-                    var installTask = ctx.AddTask($"[green]Installing {Markup.Escape(plan.ResolvedVersion)}[/]");
-                    outcome = await _installService.InstallAsync(
-                        settings.VersionOrChannel, new InstallOptions(settings.Architecture), CancellationToken.None).ConfigureAwait(false);
-                    installTask.Value = 100;
+                    result = await _installService.InstallManyAsync(tokens, options, progress, CancellationToken.None).ConfigureAwait(false);
+
+                    installTask.IsIndeterminate = false;
+                    installTask.Description = tokens.Length == 1
+                        ? $"[green]Installing {Markup.Escape(tokens[0])}[/]"
+                        : $"[green]Installed {result.Outcomes.Count} of {tokens.Length} SDKs[/]";
+                    installTask.Value = installTask.MaxValue;
                 }
 
-                // A foreign-architecture SDK is never auto-selected: the host
-                // may not be able to run it without emulation.
-                var foreignArchitecture = !Architectures.MatchesHost(outcome.Installation.Architecture, _environment.RuntimeArchitecture);
-                if (foreignArchitecture)
+                // A single failing token keeps the classic behaviour: fail loudly.
+                if (tokens.Length == 1 && result.Entries[0].Error is { } singleError)
                 {
-                    selected = outcome.Installation;
+                    throw new InvalidOperationException(singleError);
                 }
-                else if (!settings.NoUse || !settings.NoDefault)
+
+                // The last token that produced a host-architecture SDK becomes
+                // current/default; a foreign-architecture SDK is never auto-selected
+                // because the host may not be able to run it without emulation.
+                var candidate = result.Outcomes.LastOrDefault(outcome =>
+                    Architectures.MatchesHost(outcome.Installation.Architecture, _environment.RuntimeArchitecture));
+                if (candidate is not null && (!settings.NoUse || !settings.NoDefault))
                 {
                     var stateTask = ctx.AddTask("[green]Applying automatic current/default[/]");
-                    var version = outcome.Installation.Version.Raw;
+                    var version = candidate.Installation.Version.Raw;
                     selected = (settings.NoUse, settings.NoDefault) switch
                     {
                         (false, false) => await _stateService.SetCurrentAndDefaultAsync(version, CancellationToken.None).ConfigureAwait(false),
                         (false, true) => await _stateService.SetCurrentAsync(version, CancellationToken.None).ConfigureAwait(false),
                         (true, false) => await _stateService.SetDefaultAsync(version, CancellationToken.None).ConfigureAwait(false),
-                        _ => outcome.Installation
+                        _ => candidate.Installation
                     };
                     stateTask.Value = 100;
                 }
                 else
                 {
-                    selected = outcome.Installation;
+                    selected = (candidate ?? result.Outcomes.LastOrDefault())?.Installation;
                 }
 
-                var bootstrapTask = ctx.AddTask("[green]Configuring shims, PATH and profiles[/]");
-                bootstrap = await _bootstrapService.EnsureConfiguredAsync(CancellationToken.None).ConfigureAwait(false);
-                bootstrapTask.Value = 100;
+                if (result.Outcomes.Count > 0)
+                {
+                    var bootstrapTask = ctx.AddTask("[green]Configuring shims, PATH and profiles[/]");
+                    bootstrap = await _bootstrapService.EnsureConfiguredAsync(CancellationToken.None).ConfigureAwait(false);
+                    bootstrapTask.Value = 100;
+                }
 
                 // A fresh SDK gets the recorded global tools and the post-install
                 // hook; a no-op re-install skips both.
-                if (!outcome.WasAlreadyInstalled)
+                foreach (var outcome in result.Outcomes.Where(static outcome => !outcome.WasAlreadyInstalled))
                 {
                     if (!settings.NoTools)
                     {
-                        var toolsTask = ctx.AddTask("[green]Syncing global tools[/]");
-                        toolSync = await _toolSync.SyncAsync(outcome.Installation, CancellationToken.None).ConfigureAwait(false);
+                        var toolsTask = ctx.AddTask($"[green]Syncing global tools for {Markup.Escape(outcome.Installation.Version.Raw)}[/]");
+                        toolSyncs.Add((outcome, await _toolSync.SyncAsync(outcome.Installation, CancellationToken.None).ConfigureAwait(false)));
                         toolsTask.Value = 100;
                     }
 
-                    hook = await _hooks.RunAsync("post-install", outcome.Installation, CancellationToken.None).ConfigureAwait(false);
+                    hooks.Add((outcome, await _hooks.RunAsync("post-install", outcome.Installation, CancellationToken.None).ConfigureAwait(false)));
                 }
             }).ConfigureAwait(false);
 
         var effectiveConfig = await _stateService.GetConfigAsync(CancellationToken.None).ConfigureAwait(false);
+        var installs = result ?? throw new InvalidOperationException("The install step produced no result.");
 
-        var summary = new Table().Border(TableBorder.Rounded);
-        summary.AddColumn("Step");
-        summary.AddColumn("Value");
-        // Text cells: AddRow(string,...) parses values as Spectre markup.
-        summary.AddRow(new Text("Requested"), new Text(settings.VersionOrChannel));
-        summary.AddRow(new Text("Resolved"), new Text(plan!.ResolvedVersion));
-        summary.AddRow(new Text("Reason"), new Text(plan.Reason));
-        summary.AddRow(new Text("Status"), new Text(outcome!.WasAlreadyInstalled ? "Already installed" : "Installed"));
-        summary.AddRow(new Text("Installed SDK"), new Text(selected!.Version.Raw));
-        summary.AddRow(new Text("Current"), new Text(TerminalText.Sanitize(effectiveConfig.CurrentVersion) is { Length: > 0 } current ? current : "(unset)"));
-        summary.AddRow(new Text("Default"), new Text(TerminalText.Sanitize(effectiveConfig.DefaultVersion) is { Length: > 0 } @default ? @default : "(unset)"));
-        summary.AddRow(new Text("Managed root"), new Text(TerminalText.Sanitize(outcome.Installation.HostRoot)));
-        summary.AddRow(new Text("Shims"), new Text(TerminalText.Sanitize(bootstrap!.ShimsDirectory)));
-        summary.AddRow("Persistent PATH", bootstrap.PersistentPathUpdated ? "updated" : "already configured");
-        summary.AddRow("Process PATH", bootstrap.ProcessPathUpdated ? "updated" : "already configured");
-        if (toolSync is not null)
+        if (tokens.Length == 1)
         {
-            var toolsSummary = toolSync.Tools.Count == 0
-                ? "none configured"
-                : (toolSync.Tools.Count - toolSync.Failed) + " synced, " + toolSync.Failed + " failed";
-            summary.AddRow(new Text("Global tools"), new Text(toolsSummary));
+            Console.Write(SingleSummary(installs.Entries[0], effectiveConfig, selected!, bootstrap!, toolSyncs, hooks));
+        }
+        else
+        {
+            Console.Write(ManySummary(installs));
+            Console.Write(SelectionSummary(installs, effectiveConfig, bootstrap, toolSyncs, hooks));
         }
 
-        if (hook is not null && hook.Ran)
+        if (bootstrap is not null)
         {
-            summary.AddRow(new Text("post-install hook"), new Text(hook.ExitCode == 0 ? "ran" : "failed (exit " + hook.ExitCode + ")"));
+            foreach (var note in bootstrap.Notes)
+            {
+                Console.MarkupLine($"[grey]-[/] {Markup.Escape(note)}");
+            }
         }
 
-        Console.Write(summary);
-
-        foreach (var note in bootstrap.Notes)
+        foreach (var (_, sync) in toolSyncs)
         {
-            Console.MarkupLine($"[grey]-[/] {Markup.Escape(note)}");
-        }
-
-        if (toolSync is not null)
-        {
-            foreach (var tool in toolSync.Tools.Where(static tool => !tool.Succeeded))
+            foreach (var tool in sync.Tools.Where(static tool => !tool.Succeeded))
             {
                 Console.MarkupLine($"[yellow]Tool {Markup.Escape(tool.Id)} failed:[/] {Markup.Escape(tool.Error ?? "exit " + tool.ExitCode)}");
             }
         }
 
-        if (hook is not null && hook.Ran && hook.ExitCode != 0)
+        foreach (var (outcome, hook) in hooks.Where(static entry => entry.Hook.Ran && entry.Hook.ExitCode != 0))
         {
-            Console.MarkupLine($"[yellow]post-install hook failed (exit {hook.ExitCode}):[/] {Markup.Escape(TerminalText.Sanitize(hook.Output ?? string.Empty))}");
+            Console.MarkupLine($"[yellow]post-install hook failed for {Markup.Escape(outcome.Installation.Version.Raw)} (exit {hook.ExitCode}):[/] {Markup.Escape(TerminalText.Sanitize(hook.Output ?? string.Empty))}");
         }
 
-        return 0;
+        return installs.AllSucceeded ? 0 : 1;
     }
+
+    // The classic one-SDK table: Text cells, because AddRow(string,...) parses values as Spectre markup.
+    private static Table SingleSummary(
+        MultiInstallEntry entry,
+        DotVerConfig effectiveConfig,
+        SdkInstallation selected,
+        EnvironmentBootstrapResult bootstrap,
+        List<(InstallOutcome Outcome, ToolSyncResult Sync)> toolSyncs,
+        List<(InstallOutcome Outcome, HookRunResult Hook)> hooks)
+    {
+        var outcome = entry.Outcome!;
+        var summary = new Table().Border(TableBorder.Rounded);
+        summary.AddColumn("Step");
+        summary.AddColumn("Value");
+        summary.AddRow(new Text("Requested"), new Text(TerminalText.Sanitize(entry.RequestedToken)));
+        summary.AddRow(new Text("Resolved"), new Text(outcome.Plan.ResolvedVersion));
+        summary.AddRow(new Text("Reason"), new Text(outcome.Plan.Reason));
+        summary.AddRow(new Text("Status"), new Text(outcome.WasAlreadyInstalled ? "Already installed" : "Installed"));
+        summary.AddRow(new Text("Installed SDK"), new Text(selected.Version.Raw));
+        summary.AddRow(new Text("Current"), new Text(TerminalText.Sanitize(effectiveConfig.CurrentVersion) is { Length: > 0 } current ? current : "(unset)"));
+        summary.AddRow(new Text("Default"), new Text(TerminalText.Sanitize(effectiveConfig.DefaultVersion) is { Length: > 0 } @default ? @default : "(unset)"));
+        summary.AddRow(new Text("Managed root"), new Text(TerminalText.Sanitize(outcome.Installation.HostRoot)));
+        summary.AddRow(new Text("Shims"), new Text(TerminalText.Sanitize(bootstrap.ShimsDirectory)));
+        summary.AddRow("Persistent PATH", bootstrap.PersistentPathUpdated ? "updated" : "already configured");
+        summary.AddRow("Process PATH", bootstrap.ProcessPathUpdated ? "updated" : "already configured");
+        if (toolSyncs.Count > 0)
+        {
+            summary.AddRow(new Text("Global tools"), new Text(DescribeTools(toolSyncs[0].Sync)));
+        }
+
+        if (hooks.Count > 0 && hooks[0].Hook.Ran)
+        {
+            summary.AddRow(new Text("post-install hook"), new Text(DescribeHook(hooks[0].Hook)));
+        }
+
+        return summary;
+    }
+
+    private static Table ManySummary(MultiInstallResult result)
+    {
+        var table = new Table().Border(TableBorder.Rounded);
+        table.AddColumn("Requested");
+        table.AddColumn("Resolved");
+        table.AddColumn("Status");
+        table.AddColumn("Details");
+        foreach (var entry in result.Entries)
+        {
+            var (status, details) = entry switch
+            {
+                { Error: { } error } => ("[red]failed[/]", error),
+                { Duplicate: true } => ("[yellow]skipped[/]", $"Same SDK as an earlier token ({entry.Plan!.ResolvedVersion})."),
+                { Outcome: { WasAlreadyInstalled: true } outcome } => ("[green]already installed[/]", outcome.Installation.HostRoot),
+                { Outcome: { } outcome } => ("[green]installed[/]", outcome.Installation.HostRoot),
+                _ => ("[grey]unknown[/]", string.Empty)
+            };
+
+            table.AddRow(
+                new Text(TerminalText.Sanitize(entry.RequestedToken)),
+                new Text(entry.Plan?.ResolvedVersion ?? "-"),
+                new Markup(status),
+                new Text(TerminalText.Sanitize(details)));
+        }
+
+        return table;
+    }
+
+    private static Table SelectionSummary(
+        MultiInstallResult result,
+        DotVerConfig effectiveConfig,
+        EnvironmentBootstrapResult? bootstrap,
+        List<(InstallOutcome Outcome, ToolSyncResult Sync)> toolSyncs,
+        List<(InstallOutcome Outcome, HookRunResult Hook)> hooks)
+    {
+        var summary = new Table().Border(TableBorder.Rounded);
+        summary.AddColumn("Step");
+        summary.AddColumn("Value");
+        summary.AddRow(new Text("Installed SDKs"), new Text($"{result.Outcomes.Count} of {result.Entries.Count} requested ({result.Failed} failed)"));
+        summary.AddRow(new Text("Current"), new Text(TerminalText.Sanitize(effectiveConfig.CurrentVersion) is { Length: > 0 } current ? current : "(unset)"));
+        summary.AddRow(new Text("Default"), new Text(TerminalText.Sanitize(effectiveConfig.DefaultVersion) is { Length: > 0 } @default ? @default : "(unset)"));
+        if (bootstrap is not null)
+        {
+            summary.AddRow(new Text("Shims"), new Text(TerminalText.Sanitize(bootstrap.ShimsDirectory)));
+            summary.AddRow("Persistent PATH", bootstrap.PersistentPathUpdated ? "updated" : "already configured");
+            summary.AddRow("Process PATH", bootstrap.ProcessPathUpdated ? "updated" : "already configured");
+        }
+
+        foreach (var (outcome, sync) in toolSyncs)
+        {
+            summary.AddRow(new Text($"Global tools ({outcome.Installation.Version.Raw})"), new Text(DescribeTools(sync)));
+        }
+
+        foreach (var (outcome, hook) in hooks.Where(static entry => entry.Hook.Ran))
+        {
+            summary.AddRow(new Text($"post-install hook ({outcome.Installation.Version.Raw})"), new Text(DescribeHook(hook)));
+        }
+
+        return summary;
+    }
+
+    private static string DescribeTools(ToolSyncResult sync) =>
+        sync.Tools.Count == 0
+            ? "none configured"
+            : (sync.Tools.Count - sync.Failed) + " synced, " + sync.Failed + " failed";
+
+    private static string DescribeHook(HookRunResult hook) =>
+        hook.ExitCode == 0 ? "ran" : "failed (exit " + hook.ExitCode + ")";
 
     private static ArchiveChecksum? ResolveChecksum(InstallSettings settings, bool offline)
     {

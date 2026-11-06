@@ -177,6 +177,9 @@ public sealed class WorkspaceServiceTests
                 new InstallPlan(versionOrChannel, sdk.Version.Raw, "test", null), sdk, WasAlreadyInstalled: false));
         }
 
+        public Task<MultiInstallResult> InstallManyAsync(IReadOnlyList<string> tokens, InstallOptions? options, IProgress<string>? progress, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("Multi-version installs are not used by this test.");
+
         public Task<InstallOutcome> InstallFromArchiveAsync(string version, string archivePath, ArchiveChecksum checksum, InstallOptions? options, CancellationToken cancellationToken) =>
 
             throw new NotSupportedException();
