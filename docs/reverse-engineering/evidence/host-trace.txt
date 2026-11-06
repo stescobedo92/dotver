@@ -1,0 +1,40 @@
+Tracing enabled @ Fri Nov  6 09:35:18 2026 GMT
+--- Invoked dotnet [version: 10.0.14 @Commit: 0427b9abbead3fa64c6655eb4290c537397131fa] main = {
+C:\Program Files\dotnet\dotnet.exe
+--list-sdks
+}
+.NET root search location options: 0
+Reading fx resolver directory=[C:\Program Files\dotnet\host\fxr]
+Considering fxr version=[10.0.14]...
+Considering fxr version=[6.0.36]...
+Considering fxr version=[8.0.33]...
+Detected latest fxr version=[C:\Program Files\dotnet\host\fxr\10.0.14]...
+Resolved fxr [C:\Program Files\dotnet\host\fxr\10.0.14\hostfxr.dll]...
+Loaded library from C:\Program Files\dotnet\host\fxr\10.0.14\hostfxr.dll
+Invoking fx resolver [C:\Program Files\dotnet\host\fxr\10.0.14\hostfxr.dll] hostfxr_main_startupinfo
+Host path: [C:\Program Files\dotnet\dotnet.exe]
+Dotnet path: [C:\Program Files\dotnet\]
+App path: [C:\Program Files\dotnet\dotnet.dll]
+Tracing enabled @ Fri Nov  6 09:35:18 2026 GMT
+--- Invoked hostfxr_main_startupinfo [version: 10.0.14 @Commit: 0427b9abbead3fa64c6655eb4290c537397131fa]
+Checking if CoreCLR path exists=[C:\Program Files\dotnet\coreclr.dll]
+--- Executing in muxer mode...
+Using the provided arguments to determine the application to execute.
+Application '--list-sdks' is not a managed executable.
+--- Resolving .NET SDK with working dir [C:\Users\stesc\AppData\Local\Temp\claude\5f791905bc8820e1\72487053-c237-49ac-afde-4460e285b509\scratchpad\trace]
+Probing path [C:\Users\stesc\AppData\Local\Temp\claude\5f791905bc8820e1\72487053-c237-49ac-afde-4460e285b509\scratchpad\trace\global.json] for global.json
+Probing path [C:\Users\stesc\AppData\Local\Temp\claude\5f791905bc8820e1\72487053-c237-49ac-afde-4460e285b509\scratchpad\global.json] for global.json
+Probing path [C:\Users\stesc\AppData\Local\Temp\claude\5f791905bc8820e1\72487053-c237-49ac-afde-4460e285b509\global.json] for global.json
+Probing path [C:\Users\stesc\AppData\Local\Temp\claude\5f791905bc8820e1\global.json] for global.json
+Probing path [C:\Users\stesc\AppData\Local\Temp\claude\global.json] for global.json
+Probing path [C:\Users\stesc\AppData\Local\Temp\global.json] for global.json
+Probing path [C:\Users\stesc\AppData\Local\global.json] for global.json
+Probing path [C:\Users\stesc\AppData\global.json] for global.json
+Probing path [C:\Users\stesc\global.json] for global.json
+Probing path [C:\Users\global.json] for global.json
+Probing path [C:\global.json] for global.json
+Terminating global.json search at [C:\]
+Gathering SDK locations in [C:\Program Files\dotnet\]
+Ignoring version [10.0.301] without dotnet.dll
+Found SDK version [10.0.403]
+Found SDK version [8.0.427]

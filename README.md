@@ -7,7 +7,7 @@
 - Interactive TUI/CLI with `Spectre.Console`.
 - Cross-platform: Windows, Linux, and macOS.
 - Detection of installed SDKs via official root, `DOTNET_ROOT`, `PATH`, and manually registered roots.
-- Isolated installations in `~/.dotver/installs/<version>` using the official `dotnet-install` script, from a local archive on air-gapped machines (`install --from`), or through a corporate mirror (`mirror set`). Cross-architecture installs live in `installs/<version>--<arch>` and are never auto-selected; runtime-only installs live in `~/.dotver/runtimes/`.
+- Isolated installations in `~/.dotver/installs/<version>` using the official `dotnet-install` script, several at once (`install 8.0 9.0 lts`), from a local archive on air-gapped machines (`install --from`), or through a corporate mirror (`mirror set`). Verified SDK archives for any OS/architecture can be prepared with `dotver download` (RIDs resolved the way the `dotnet` host does it). Cross-architecture installs live in `installs/<version>--<arch>` and are never auto-selected; runtime-only installs live in `~/.dotver/runtimes/`.
 - Per-project SDK pins in `global.json` (`dotver local`), one-command onboarding on any machine (`dotver ensure`), and monorepo-wide onboarding (`dotver scan --ensure`).
 - A readable explanation of which SDK is active and why (`dotver explain`).
 - Shims to intercept `dotnet --info`, `dotnet --list-sdks`, and `dotnet --version`, plus one-off runs with a specific SDK (`dotver exec`), matrix runs across SDKs (`dotver each`), and pinned interactive shells (`dotver shell`) that never change your global selection.
@@ -51,6 +51,8 @@ dotver install lts
 dotver install 8.0.412 --arch arm64        # cross-arch: installs/<version>--<arch>
 dotver install 8.0 --runtime aspnetcore    # runtime-only under ~/.dotver/runtimes
 dotver install 8.0.412 --from ./dotnet-sdk-8.0.412-linux-x64.tar.gz --sha512 <hex>   # offline, digest required
+dotver install 8.0 9.0 lts                 # several SDKs in order; the last one becomes current/default
+dotver download 8.0 9.0 [--rid linux-x64 --rid win-x64] [--out DIR] [--dry-run] [--json]   # verified archives (+ .sha512) for other machines
 dotver list-remote [--json]                # alias: ls-remote
 dotver mirror show | set --install-script <url> --releases-index <url> | clear      # corporate mirror
 dotver tools add dotnet-ef [--version 8.0.0]   # global tools re-installed after every install
@@ -102,6 +104,8 @@ Commands meant to gate a script or a CI job return a stable non-zero code:
 |---|---|
 | `scan`, `scan --ensure --dry-run` | 1 while any pin is missing or the scan was truncated |
 | `ensure --recursive` | 1 when a pin could not be installed |
+| `install a b c` (several tokens) | 1 if any token failed to install |
+| `download` | 1 if any (token, RID) entry could not be planned or verified |
 | `doctor` | 1 while issues remain |
 | `audit` | 1 if any SDK is vulnerable, 2 if any SDK could not be verified |
 | `each` | 1 if any SDK's command failed, 2 on usage errors, 130 when interrupted with Ctrl+C |
@@ -579,6 +583,62 @@ URLs and `extraAllowedHosts`.
 Proxies: `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` (and the Windows system
 proxy) are honored for every download.
 
+### Download several versions for several platforms
+
+`dotver download` fetches the official SDK archives for one or more
+versions/channels and one or more runtime identifiers, verifies each one
+against the SHA-512 published in Microsoft's release metadata, and writes a
+`<archive>.sha512` sidecar next to it (in `sha512sum -c` layout). The result
+pairs with `dotver install --from`, so one connected machine can prepare the
+archives for an air-gapped fleet of Windows, Linux (glibc or musl) and macOS
+boxes:
+
+```bash
+$ dotver download 8.0 lts --rid linux-x64 --rid osx-arm64 --dry-run
+╭───────────┬───────────┬──────────┬──────────────────────────────────────┬─────────┬──────────────────────────────────────╮
+│ Requested │ RID       │ SDK      │ Archive                              │ Status  │ Details                              │
+├───────────┼───────────┼──────────┼──────────────────────────────────────┼─────────┼──────────────────────────────────────┤
+│ 8.0       │ linux-x64 │ 8.0.427  │ dotnet-sdk-8.0.427-linux-x64.tar.gz  │ planned │ https://builds.dotnet.microsoft.com… │
+│ 8.0       │ osx-arm64 │ 8.0.427  │ dotnet-sdk-8.0.427-osx-arm64.tar.gz  │ planned │ https://builds.dotnet.microsoft.com… │
+│ lts       │ linux-x64 │ 10.0.403 │ dotnet-sdk-10.0.403-linux-x64.tar.gz │ planned │ https://builds.dotnet.microsoft.com… │
+│ lts       │ osx-arm64 │ 10.0.403 │ dotnet-sdk-10.0.403-osx-arm64.tar.gz │ planned │ https://builds.dotnet.microsoft.com… │
+╰───────────┴───────────┴──────────┴──────────────────────────────────────┴─────────┴──────────────────────────────────────╯
+Output directory: /home/me/dotnet-sdk-archives
+
+$ dotver download 8.0.427 --rid linux-musl-arm64 --out ./archives
+... (one progress bar per archive, with bytes and transfer speed) ...
+│ 8.0.427   │ linux-musl-arm64 │ 8.0.427 │ dotnet-sdk-8.0.427-linux-musl-arm64.tar.gz │ downloaded │ 212,137,894 bytes -> ./archives/dotnet-sdk-8.0.427-linux-musl-arm64.tar.gz │
+Output directory: ./archives
+- dotver install 8.0.427 --from "./archives/dotnet-sdk-8.0.427-linux-musl-arm64.tar.gz" --sha512 fb9d8c95b384b7d9…6439951a0
+```
+
+- Without `--rid` the RID of this machine is used, derived the way the
+  `dotnet` host does it (`win-x64`, `linux-x64`, `linux-musl-arm64`,
+  `osx-arm64`, ...). `--rid` is repeatable; `--out` defaults to
+  `./dotnet-sdk-archives`.
+- `.zip` for Windows, `.tar.gz` for everything else. A RID without that
+  archive in the metadata, or a token that does not resolve, is reported as
+  failed without stopping the other entries.
+- Archives stream into `<name>.part`, are verified, then renamed: a mismatch
+  is discarded and reported, an archive already present and verified is
+  skipped, and an archive without a published SHA-512 is refused.
+- `--dry-run` prints versions, URLs and digests without downloading; `--json`
+  prints a `schemaVersion` 1 report. Exit code 1 if any entry failed. The
+  command never touches shims, PATH or profiles.
+
+Several SDKs can also be installed in one command: `dotver install 8.0 9.0 lts`
+installs them in order, reports each one in a table, skips tokens that
+resolve to a version an earlier token already produced, keeps going after a
+failure (exit code 1 at the end), and makes the last host-architecture SDK
+current and default unless `--no-use`/`--no-default`.
+
+How `dotnet.exe` itself finds installations per OS (registry value, Program
+Files, `/etc/dotnet/install_location`), derives its RID and builds its
+download links was recovered from the shipped host binaries with REA and
+corroborated at runtime; dotver mirrors it in `HostPlatformResolver` and
+`DotnetInstallLocations`. See
+[docs/reverse-engineering/dotnet-host-resolution.md](docs/reverse-engineering/dotnet-host-resolution.md).
+
 ### Keep global tools across SDKs
 
 Global tools (`dotnet tool install -g`) are restored against the runtime of
@@ -753,6 +813,20 @@ npx dotver list
 The package embeds the SHA-256 of every release binary; `postinstall` verifies
 the download against it and refuses to install anything that does not match.
 
+### Install via NuGet (dotnet tool)
+
+Every release is also packed as a framework-dependent global tool for
+machines that already have a .NET SDK:
+
+```bash
+dotnet tool install -g dotver
+dotnet tool update -g dotver
+```
+
+The tool shares the shim, PATH and `~/.dotver` behaviour of the
+self-contained binaries; `self-update` keeps working for those binaries and
+`dotnet tool update` is the way to update the tool.
+
 ### Install via WinGet (Windows)
 
 ```bash
@@ -787,8 +861,8 @@ vulnerable system installs stay visible.
 
 Script-oriented and read-only commands skip this bootstrap so they stay
 side-effect free: `exec`, `each`, `shell`, `env`, `which`, `explain`, `scan`,
-`audit`, `tools`, `mirror`, `completions`, `self-update` and `self-uninstall`
-never rewrite shims, `PATH`, or profiles. The `dotnet` shim itself never
+`audit`, `tools`, `mirror`, `download`, `completions`, `self-update` and
+`self-uninstall` never rewrite shims, `PATH`, or profiles. The `dotnet` shim itself never
 bootstraps either: running `dotnet build` only runs dotnet.
 
 The bootstrap is conservative about your files:
@@ -829,3 +903,4 @@ On Windows, the current process cannot mutate the already-open parent shell; if 
   - `dotnet-install` script.
   - SDK installation detection.
   - packaging/publishing on WinGet.
+- The shipped `dotnet.exe`/`hostfxr.dll` binaries, decompiled with REA (Ghidra), for the install-location, RID and download-link rules mirrored by `dotver download`: [docs/reverse-engineering/dotnet-host-resolution.md](docs/reverse-engineering/dotnet-host-resolution.md).

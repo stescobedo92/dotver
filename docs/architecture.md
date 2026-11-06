@@ -38,7 +38,11 @@
 Sources:
 
 - `~/.dotver/installs/*`
-- well-known official roots per platform
+- the host's global install location, resolved like `hostfxr` does it
+  (`DotnetInstallLocations`: registry `InstallLocation` then `%ProgramFiles%\dotnet`
+  on Windows; `/etc/dotnet/install_location[_<arch>]` then `/usr/share/dotnet`
+  or `/usr/local/share/dotnet` on Unix), followed by the user-local roots the
+  install scripts use
 - `DOTNET_ROOT`
 - `PATH` entries
 - manually registered roots
@@ -94,6 +98,29 @@ The parent terminal session cannot be modified directly from a child process on 
 - `InstallService.InstallFromArchiveAsync` (offline `--from`), `ConfigDownloadSources` + `MirrorService` (mirror in `config.json`, hosts added to the download allow-list explicitly).
 - `SelfUpdateService` + `GitHubReleaseFeed` (release metadata and assets from GitHub hosts only, verified against `checksums.txt`), `SelfUninstallService` + `EnvironmentBootstrapService.RemoveAsync` (reverse of the bootstrap, scoped to this `DOTVER_HOME`).
 
+## Download module (several versions, several platforms)
+
+- `HostPlatformResolver` derives OS token, architecture and RID the way the
+  `dotnet` host and the install scripts do (`win-x64`, `linux-musl-arm64`,
+  `osx-arm64`; musl detected through `/lib/ld-musl-<machine>.so.1`), and
+  parses/validates user-supplied `--rid` values. `DotnetHostLinks` reproduces
+  the `aka.ms/dotnet-core-applaunch` query string the host prints.
+- `SdkDownloadService` resolves each token with `InstallService` (exact
+  version, channel, `lts`/`sts`/`latest`), reads the channel's `releases.json`
+  once, picks the `files[]` entry whose `rid` matches and whose name ends with
+  the OS archive extension, streams it to `<file>.part` through
+  `IHttpResourceClient.DownloadToFileAsync` (2 GiB cap, host allow-list,
+  redirects validated hop by hop), verifies the published SHA-512 and only
+  then renames it and writes the `.sha512` sidecar. One failed entry never
+  stops the others.
+- `InstallService.InstallManyAsync` installs several tokens in order,
+  deduplicates tokens that resolve to the same version, and reports per-token
+  errors; `InstallCommand` applies selection, bootstrap, tool sync and hooks
+  to the SDKs that were actually installed.
+- The evidence behind the per-OS rules (decompiled `dotnet.exe` and
+  `hostfxr.dll`, runtime trace) is in
+  `docs/reverse-engineering/dotnet-host-resolution.md`.
+
 ## Design Decisions
 
 - Persistent state lives in `~/.dotver/config.json`.
@@ -123,6 +150,11 @@ The parent terminal session cannot be modified directly from a child process on 
   `ExecutableLocator`, which skips the current directory and the shims
   directory, so a cloned repository cannot plant a fake tool. When no host
   can be found the shim fails loudly instead of spawning a bare `dotnet`.
+- Downloaded archives are untrusted until their SHA-512 matches the official
+  metadata: they stream into a `.part` file with a size cap, file names come
+  from the validated download URL (plain name, known extension) or are
+  rebuilt from validated values, the output directory is never a
+  symlink/junction, and `--rid` values are validated before any request.
 - Inventory only accepts absolute root hints; relative `PATH`/`DOTNET_ROOT`
   entries are ignored and `register-root` stores the normalized path of an
   existing directory.

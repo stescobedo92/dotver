@@ -1,0 +1,34 @@
+releases-index.json (https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json, 2026-11-06)
+  channel-version 10.0  latest-sdk 10.0.403  support-phase active  release-type lts  releases.json -> .../release-metadata/10.0/releases.json
+  channel-version 9.0   latest-sdk 9.0.320   support-phase maintenance  release-type sts
+  channel-version 8.0   latest-sdk 8.0.427   release-type lts
+
+releases.json (8.0) -> releases[0].sdks[0]: version 8.0.427, runtime-version 8.0.33, files[]:
+  rid              | name                               | url                                                                        | hash (sha512, first 16)
+  linux-arm        | dotnet-sdk-linux-arm.tar.gz        | https://builds.dotnet.microsoft.com/dotnet/Sdk/8.0.427/dotnet-sdk-8.0.427-linux-arm.tar.gz        | 30ed25cf666eabab
+  linux-arm64      | dotnet-sdk-linux-arm64.tar.gz      | .../Sdk/8.0.427/dotnet-sdk-8.0.427-linux-arm64.tar.gz      | 2b851de08e94922b
+  linux-musl-x64   | dotnet-sdk-linux-musl-x64.tar.gz   | .../Sdk/8.0.427/dotnet-sdk-8.0.427-linux-musl-x64.tar.gz   | 37a6409275685609
+  linux-musl-arm   | dotnet-sdk-linux-musl-arm.tar.gz   | .../Sdk/8.0.427/dotnet-sdk-8.0.427-linux-musl-arm.tar.gz   | 55b0e47da5dddee0
+  linux-musl-arm64 | dotnet-sdk-linux-musl-arm64.tar.gz | .../Sdk/8.0.427/dotnet-sdk-8.0.427-linux-musl-arm64.tar.gz | fb9d8c95b384b7d9
+  linux-x64        | dotnet-sdk-linux-x64.tar.gz        | .../Sdk/8.0.427/dotnet-sdk-8.0.427-linux-x64.tar.gz        | 85725692f465f502
+  osx-x64          | dotnet-sdk-osx-x64.pkg             | .../Sdk/8.0.427/dotnet-sdk-8.0.427-osx-x64.pkg             | 5e19aa5c65b175e3
+  osx-x64          | dotnet-sdk-osx-x64.tar.gz          | .../Sdk/8.0.427/dotnet-sdk-8.0.427-osx-x64.tar.gz          | a6c6d0a3708b15e2
+  osx-arm64        | dotnet-sdk-osx-arm64.pkg           | .../Sdk/8.0.427/dotnet-sdk-8.0.427-osx-arm64.pkg           | d86ee4ed057eae2a
+  osx-arm64        | dotnet-sdk-osx-arm64.tar.gz        | .../Sdk/8.0.427/dotnet-sdk-8.0.427-osx-arm64.tar.gz        | 79786b93f249d233
+  win-arm64        | dotnet-sdk-win-arm64.zip           | .../Sdk/8.0.427/dotnet-sdk-8.0.427-win-arm64.zip           | c660ae75b27ffb56
+  win-x64          | dotnet-sdk-win-x64.exe             | .../Sdk/8.0.427/dotnet-sdk-8.0.427-win-x64.exe             | 004696a103c8aaa3
+  win-arm64        | dotnet-sdk-win-arm64.exe           | .../Sdk/8.0.427/dotnet-sdk-8.0.427-win-arm64.exe           | 8aee6c7f71c8cdc6
+  win-x64          | dotnet-sdk-win-x64.zip             | .../Sdk/8.0.427/dotnet-sdk-8.0.427-win-x64.zip             | a4dd6eb2bf2a2f6f
+  win-x86          | dotnet-sdk-win-x86.exe             | .../Sdk/8.0.427/dotnet-sdk-8.0.427-win-x86.exe             | b076cdd60ff39f2c
+  win-x86          | dotnet-sdk-win-x86.zip             | .../Sdk/8.0.427/dotnet-sdk-8.0.427-win-x86.zip             | 07a22836fa94f081
+
+dotnet-install.sh (https://dot.net/v1/dotnet-install.sh)
+  187 is_musl_based_distro() { (ldd --version 2>&1 || true) | grep -q musl }
+  191 get_current_os_name(): uname Darwin -> "osx"; FreeBSD -> "freebsd"; Linux -> "linux-musl" when musl else "linux"
+  295 get_machine_architecture(): uname -m -> arm | arm64 | s390x | ppc64le | loongarch64 | riscv64 | x64 (default)
+  749 download_link="$azure_feed/Sdk/$specific_version/dotnet-sdk-$specific_product_version-$osname-$normalized_architecture.tar.gz"
+
+dotnet-install.ps1 (https://dot.net/v1/dotnet-install.ps1)
+  259 Get-CLIArchitecture-From-Architecture: amd64|x64 -> x64 ; x86 ; arm ; arm64 ; else throw
+  355 Get-FileExtension-For-Version: ".zip" (tar.gz only from 11.0 preview 3 when tar is available)
+  647 $PayloadURL = "$AzureFeed/Sdk/$SpecificVersion/dotnet-sdk-$SpecificProductVersion-win-$CLIArchitecture$ext"
