@@ -12,3 +12,11 @@ artifacts/
 *.snupkg
 packaging/npm/vendor/
 packaging/npm/.tmp/
+
+# Per-developer agent state: never part of the repository.
+.remember/
+.claude/settings.local.json
+
+# Default output of `dotver download` and its in-flight files.
+dotnet-sdk-archives/
+*.part
