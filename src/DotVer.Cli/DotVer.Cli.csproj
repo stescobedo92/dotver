@@ -16,6 +16,14 @@
     <AssemblyName>dotver</AssemblyName>
     <PackageId>dotver</PackageId>
     <Description>Cross-platform .NET SDK version manager with Spectre.Console TUI and dotnet shims.</Description>
+    <!-- NuGet ships the same CLI as a framework-dependent global tool: dotnet tool install -g dotver -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>dotver</ToolCommandName>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
 </Project>

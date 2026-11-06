@@ -240,6 +240,68 @@ jobs:
           name: npm-package
           path: artifacts/npm
 
+  nuget-package:
+    runs-on: ubuntu-latest
+    needs: [setup, github-release]
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ needs.setup.outputs.tag }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: 10.0.x
+
+      # The same CLI as the self-contained binaries, packed as a framework-
+      # dependent global tool: `dotnet tool install -g dotver`.
+      - name: Pack dotnet tool
+        env:
+          VERSION: ${{ needs.setup.outputs.version }}
+          ASSEMBLY_VERSION: ${{ needs.setup.outputs.assembly_version }}
+        run: |
+          dotnet pack src/DotVer.Cli/DotVer.Cli.csproj \
+            -c Release \
+            -p:Version="$VERSION" \
+            -p:AssemblyVersion="$ASSEMBLY_VERSION" \
+            -p:FileVersion="$ASSEMBLY_VERSION" \
+            -o artifacts/nuget
+
+      - name: Verify package
+        run: |
+          ls -la artifacts/nuget
+          test -f "artifacts/nuget/dotver.${{ needs.setup.outputs.version }}.nupkg"
+
+      # Same probe pattern as npm: the key is only ever exposed to the step
+      # that needs it, never to the whole job.
+      - name: Check NuGet API key
+        id: nuget-key
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [ -n "$NUGET_API_KEY" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to NuGet
+        if: ${{ steps.nuget-key.outputs.present == 'true' }}
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          dotnet nuget push "artifacts/nuget/*.nupkg" \
+            --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+      - name: Upload NuGet artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nuget-package
+          path: artifacts/nuget
+
   winget-manifest:
     runs-on: windows-latest
     needs: [setup, github-release]
